@@ -1,0 +1,24 @@
+{
+  "name": "WANDA - Exutoire Collectif",
+  "short_name": "WANDA",
+  "description": "Tu n'es pas seul à galérer. Un clic, un compteur, un mur solidaire.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#141210",
+  "theme_color": "#E63946",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

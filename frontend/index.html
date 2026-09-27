@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>WANDA — Exutoire Collectif</title>
+
+  <!-- PWA Meta -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#141210">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" type="image/svg+xml" href="/icons/icon-192.svg">
+
+  <!-- Polices : Space Grotesk (Brutaliste/Urbain) + Plus Jakarta Sans (Corps lisible) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Conteneur d'effets de particules / explosion dopamine -->
+  <div id="particle-canvas-container"></div>
+
+  <!-- Toasts & Notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <div class="app-layout">
+    <!-- ========================================== -->
+    <!-- ÉCRAN 1 : LE COMPTEUR (Arrivée par défaut) -->
+    <!-- ========================================== -->
+    <main id="view-counter" class="view active">
+      <header class="app-header">
+        <div class="header-top-row">
+          <div class="brand">
+            <span class="brand-title">WANDA.</span>
+            <span class="brand-badge">237</span>
+          </div>
+          <button id="btn-open-settings" class="btn-icon-ghost" title="Paramètres et Thèmes" aria-label="Paramètres">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+        </div>
+        <p class="brand-tagline">L'exutoire collectif camerounais</p>
+      </header>
+
+      <section class="counter-hero">
+        <div class="counter-display-card">
+          <div class="counter-status-pill">
+            <span class="pulse-dot"></span>
+            <span>Aujourd'hui au Cameroun</span>
+          </div>
+
+          <div class="counter-massive-wrap">
+            <span id="counter-value" class="counter-value">0</span>
+          </div>
+          
+          <p class="counter-label">personnes ont wanda aujourd'hui</p>
+        </div>
+
+        <!-- GROS BOUTON TACTILE PHYSIQUE -->
+        <div class="action-wrap">
+          <button id="btn-wanda-main" class="btn-wanda-press" aria-label="J'ai wanda aujourd'hui">
+            <span class="btn-icon">
+              <!-- SVG Flash / Lightning -->
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor"/>
+              </svg>
+            </span>
+            <span class="btn-text">J'AI WANDA AUJOURD'HUI</span>
+          </button>
+          <p class="btn-subtext">1 clic anonyme • Tu n'es pas seul dans la galère</p>
+        </div>
+      </section>
+
+      <!-- Raccourci vers Le Mur -->
+      <section class="counter-footer-hint">
+        <button id="btn-goto-wall" class="btn-secondary-link">
+          <span>Découvrir les wandas du jour sur Le Mur</span>
+          <!-- SVG Flèche droite -->
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+      </section>
+    </main>
+
+    <!-- ========================================== -->
+    <!-- ÉCRAN 2 : LE MUR (Fil des Publications)   -->
+    <!-- ========================================== -->
+    <main id="view-wall" class="view">
+      <header class="wall-header">
+        <div class="wall-header-top">
+          <h1 class="wall-title">Le Mur des Wandas</h1>
+          <div class="wall-header-actions">
+            <button id="btn-refresh-posts" class="btn-icon-ghost" title="Actualiser" aria-label="Actualiser">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 4v6h-6"></path>
+                <path d="M1 20v-6h6"></path>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+            </button>
+            <button id="btn-open-settings-wall" class="btn-icon-ghost" title="Paramètres et Thèmes" aria-label="Paramètres">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Barre de filtres par catégories -->
+        <nav class="categories-bar" aria-label="Filtres catégories">
+          <button class="cat-pill active" data-category="Tous">Tous</button>
+          <button class="cat-pill" data-category="#NEPA">#NEPA</button>
+          <button class="cat-pill" data-category="#Embouteillage">#Embouteillage</button>
+          <button class="cat-pill" data-category="#Prix">#Prix</button>
+          <button class="cat-pill" data-category="#UY1">#UY1</button>
+          <button class="cat-pill" data-category="#Benskin">#Benskin</button>
+          <button class="cat-pill" data-category="#Diaspora">#Diaspora</button>
+          <button class="cat-pill" data-category="#Administration">#Administration</button>
+          <button class="cat-pill" data-category="#Humour">#Humour</button>
+        </nav>
+      </header>
+
+      <section class="wall-content">
+        <div id="posts-stream" class="posts-stream">
+          <!-- Les publications s'injectent ici dynamiquement -->
+        </div>
+
+        <div id="wall-loading" class="wall-loading">
+          <div class="spinner"></div>
+          <span>Chargement des wandas...</span>
+        </div>
+      </section>
+    </main>
+
+    <!-- ========================================== -->
+    <!-- TIROIR BOTTOM SHEET : POSTER UN WANDA      -->
+    <!-- ========================================== -->
+    <div id="drawer-backdrop" class="drawer-backdrop"></div>
+    <div id="post-drawer" class="post-drawer">
+      <div class="drawer-handle"></div>
+      
+      <div class="drawer-header">
+        <div class="drawer-title-group">
+          <h2 class="drawer-title">Raconter ton Wanda</h2>
+          <p id="drawer-subtitle" class="drawer-subtitle">140 caractères anonymes • Zéro filtre, zéro jugement</p>
+        </div>
+        <button id="btn-close-drawer" class="btn-icon-ghost" aria-label="Fermer">
+          <!-- SVG Croix fermer -->
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <form id="wanda-form" class="drawer-form">
+        <div class="textarea-wrap">
+          <textarea 
+            id="post-text" 
+            placeholder="Qu'est-ce qui t'a fait wanda aujourd'hui au Cameroun ou dans la diaspora ? (Coupure, prix, bouchon...)" 
+            maxlength="140" 
+            required></textarea>
+          <div class="char-countdown-wrap">
+            <span id="char-count">140</span>
+          </div>
+        </div>
+
+        <div class="form-categories-section">
+          <label class="form-label">Choisis tes hashtags :</label>
+          <div id="form-cat-selectors" class="form-cat-pills">
+            <button type="button" class="form-cat-tag" data-tag="#NEPA">#NEPA</button>
+            <button type="button" class="form-cat-tag" data-tag="#Embouteillage">#Embouteillage</button>
+            <button type="button" class="form-cat-tag" data-tag="#Prix">#Prix</button>
+            <button type="button" class="form-cat-tag" data-tag="#UY1">#UY1</button>
+            <button type="button" class="form-cat-tag" data-tag="#Benskin">#Benskin</button>
+            <button type="button" class="form-cat-tag" data-tag="#Diaspora">#Diaspora</button>
+            <button type="button" class="form-cat-tag" data-tag="#Ghosting">#Ghosting</button>
+            <button type="button" class="form-cat-tag" data-tag="#Administration">#Administration</button>
+            <button type="button" class="form-cat-tag" data-tag="#Humour">#Humour</button>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" id="btn-submit-wanda" class="btn-primary-action">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+            <span>Déposer mon Wanda</span>
+          </button>
+          <button type="button" id="btn-skip-drawer" class="btn-skip-action">
+            Non merci, juste wanda
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- TIROIR BOTTOM SHEET : PARAMÈTRES & THÈMES -->
+    <!-- ========================================== -->
+    <div id="settings-backdrop" class="drawer-backdrop"></div>
+    <div id="settings-drawer" class="post-drawer settings-drawer">
+      <div class="drawer-handle"></div>
+      
+      <div class="drawer-header">
+        <div class="drawer-title-group">
+          <h2 class="drawer-title">Paramètres & Thèmes</h2>
+          <p class="drawer-subtitle">Personnalise l'ambiance et les sensations</p>
+        </div>
+        <button id="btn-close-settings" class="btn-icon-ghost" aria-label="Fermer les paramètres">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="settings-content">
+        <!-- SECTION 1 : THÈMES -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">Palette & Thème</h3>
+          <div class="theme-grid">
+            <!-- Thème 1 : Charbon 237 -->
+            <button class="theme-card active" data-theme="charbon">
+              <div class="theme-swatch">
+                <span class="swatch-color" style="background: #141210;"></span>
+                <span class="swatch-color" style="background: #E63946;"></span>
+                <span class="swatch-color" style="background: #FFB703;"></span>
+              </div>
+              <span class="theme-name">Charbon 237</span>
+              <span class="theme-desc">L'original urbain</span>
+            </button>
+
+            <!-- Thème 2 : Terre de Foumban -->
+            <button class="theme-card" data-theme="foumban">
+              <div class="theme-swatch">
+                <span class="swatch-color" style="background: #18110D;"></span>
+                <span class="swatch-color" style="background: #E0533C;"></span>
+                <span class="swatch-color" style="background: #F4A261;"></span>
+              </div>
+              <span class="theme-name">Foumban</span>
+              <span class="theme-desc">Terre cuite & ocre</span>
+            </button>
+
+            <!-- Thème 3 : Nuit de Kribi -->
+            <button class="theme-card" data-theme="kribi">
+              <div class="theme-swatch">
+                <span class="swatch-color" style="background: #0B131F;"></span>
+                <span class="swatch-color" style="background: #00B4D8;"></span>
+                <span class="swatch-color" style="background: #F4D06F;"></span>
+              </div>
+              <span class="theme-name">Nuit de Kribi</span>
+              <span class="theme-desc">Bleu océan profond</span>
+            </button>
+
+            <!-- Thème 4 : Forêt Équatoriale -->
+            <button class="theme-card" data-theme="equateur">
+              <div class="theme-swatch">
+                <span class="swatch-color" style="background: #0C1610;"></span>
+                <span class="swatch-color" style="background: #2A9D8F;"></span>
+                <span class="swatch-color" style="background: #E9C46A;"></span>
+              </div>
+              <span class="theme-name">Équateur</span>
+              <span class="theme-desc">Canopée & émeraude</span>
+            </button>
+
+            <!-- Thème 5 : Sable du Sahel -->
+            <button class="theme-card" data-theme="sahel">
+              <div class="theme-swatch">
+                <span class="swatch-color" style="background: #F4EFEB; border: 1px solid #CCC;"></span>
+                <span class="swatch-color" style="background: #D9483B;"></span>
+                <span class="swatch-color" style="background: #C97A24;"></span>
+              </div>
+              <span class="theme-name">Sable Sahel</span>
+              <span class="theme-desc">Chaleur claire & lin</span>
+            </button>
+
+            <!-- Thème 6 : Classique Sombre -->
+            <button class="theme-card" data-theme="dark_classic">
+              <div class="theme-swatch">
+                <span class="swatch-color" style="background: #111113;"></span>
+                <span class="swatch-color" style="background: #E63946;"></span>
+                <span class="swatch-color" style="background: #FFFFFF;"></span>
+              </div>
+              <span class="theme-name">Classique Sombre</span>
+              <span class="theme-desc">Minimaliste & pur</span>
+            </button>
+
+            <!-- Thème 7 : Classique Clair -->
+            <button class="theme-card" data-theme="light_classic">
+              <div class="theme-swatch">
+                <span class="swatch-color" style="background: #FFFFFF; border: 1px solid #DDD;"></span>
+                <span class="swatch-color" style="background: #E63946;"></span>
+                <span class="swatch-color" style="background: #0F172A;"></span>
+              </div>
+              <span class="theme-name">Classique Clair</span>
+              <span class="theme-desc">Blanc pur & épuré</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- SECTION 2 : ANIMATION DES EMOJIS -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <h3 class="settings-section-title">Animation des Réactions</h3>
+            <button id="btn-test-anim" class="btn-test-action" title="Tester l'animation">
+              <span>Tester</span>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+            </button>
+          </div>
+          
+          <div class="anim-options-list">
+            <!-- 1. Méga-Choc / Séisme -->
+            <label class="anim-option">
+              <input type="radio" name="emoji-anim" value="seisme" checked>
+              <div class="anim-option-box">
+                <div class="anim-option-info">
+                  <span class="anim-title">Méga-Choc / Onde de Choc</span>
+                  <span class="anim-desc">Secousse d'écran et méga emoji géant en onde de choc</span>
+                </div>
+              </div>
+            </label>
+
+            <!-- 2. Supernova / Flash -->
+            <label class="anim-option">
+              <input type="radio" name="emoji-anim" value="supernova">
+              <div class="anim-option-box">
+                <div class="anim-option-info">
+                  <span class="anim-title">Supernova / Flash Cosmique</span>
+                  <span class="anim-desc">Pulsation de charge, flash lumineux éclatant et blast géant</span>
+                </div>
+              </div>
+            </label>
+
+            <!-- 3. Coup de Foudre -->
+            <label class="anim-option">
+              <input type="radio" name="emoji-anim" value="foudre">
+              <div class="anim-option-box">
+                <div class="anim-option-info">
+                  <span class="anim-title">Coup de Foudre / Impact Électrique</span>
+                  <span class="anim-desc">Éclair zébré descendant avec fracas et étincelles jaillissantes</span>
+                </div>
+              </div>
+            </label>
+
+            <!-- 4. Pluie de Météores -->
+            <label class="anim-option">
+              <input type="radio" name="emoji-anim" value="meteore">
+              <div class="anim-option-box">
+                <div class="anim-option-info">
+                  <span class="anim-title">Pluie de Météores / Déluge</span>
+                  <span class="anim-desc">Déluge de 18 emojis en cascade diagonale à grande vitesse</span>
+                </div>
+              </div>
+            </label>
+
+            <!-- 5. Trou Noir -->
+            <label class="anim-option">
+              <input type="radio" name="emoji-anim" value="trou_noir">
+              <div class="anim-option-box">
+                <div class="anim-option-info">
+                  <span class="anim-title">Trou Noir / Implosion-Blast</span>
+                  <span class="anim-desc">Aspiration cosmique au centre suivie d'une projection 3D</span>
+                </div>
+              </div>
+            </label>
+
+            <!-- 6. K.O. Punch -->
+            <label class="anim-option">
+              <input type="radio" name="emoji-anim" value="punch">
+              <div class="anim-option-box">
+                <div class="anim-option-info">
+                  <span class="anim-title">K.O. Punch / Impact Brutal</span>
+                  <span class="anim-desc">Zoom d'impact fulgurant avec effet coup de poing anime</span>
+                </div>
+              </div>
+            </label>
+
+            <!-- 7. Feux d'artifice -->
+            <label class="anim-option">
+              <input type="radio" name="emoji-anim" value="explosion">
+              <div class="anim-option-box">
+                <div class="anim-option-info">
+                  <span class="anim-title">Feux d'artifice (360°)</span>
+                  <span class="anim-desc">Explosion circulaire classique en dispersion radiale</span>
+                </div>
+              </div>
+            </label>
+
+            <!-- 8. Geyser -->
+            <label class="anim-option">
+              <input type="radio" name="emoji-anim" value="geyser">
+              <div class="anim-option-box">
+                <div class="anim-option-info">
+                  <span class="anim-title">Geyser / Fontaine</span>
+                  <span class="anim-desc">Jet vertical puissant vers le haut qui retombe en pluie</span>
+                </div>
+              </div>
+            </label>
+
+            <!-- 9. Vortex -->
+            <label class="anim-option">
+              <input type="radio" name="emoji-anim" value="vortex">
+              <div class="anim-option-box">
+                <div class="anim-option-info">
+                  <span class="anim-title">Vortex / Spirale</span>
+                  <span class="anim-desc">Tourbillon ascendant rotatif avec grossissement</span>
+                </div>
+              </div>
+            </label>
+
+            <!-- 10. Discret -->
+            <label class="anim-option">
+              <input type="radio" name="emoji-anim" value="sobre">
+              <div class="anim-option-box">
+                <div class="anim-option-info">
+                  <span class="anim-title">Discret / Minimaliste</span>
+                  <span class="anim-desc">Micro-rebond doux sans particules (économise la batterie)</span>
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- SECTION 3 : AUDIO & VIBRATIONS -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">Sensations & Haptique</h3>
+          <div class="toggles-list">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title">Sons Web Audio</span>
+                <span class="toggle-desc">Sons de clics tactiles et carillons légers (0 Ko data)</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggle-sound" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title">Vibrations Mobiles</span>
+                <span class="toggle-desc">Retour haptique lors des clics sur smartphone</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggle-haptic" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- BARRE DE NAVIGATION FIXE EN BAS (TIKTOK)   -->
+    <!-- ========================================== -->
+    <nav class="bottom-nav">
+      <!-- Onglet 1 : Le Compteur -->
+      <button id="nav-btn-counter" class="nav-item active" aria-label="Compteur">
+        <span class="nav-icon">
+          <!-- SVG Compteur / Gauge -->
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </span>
+        <span class="nav-label">Compteur</span>
+      </button>
+
+      <!-- Bouton Central Surélevé : Poster (+) -->
+      <div class="nav-center-wrap">
+        <button id="nav-btn-create" class="nav-btn-plus" aria-label="Créer une publication">
+          <!-- SVG Plus -->
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Onglet 2 : Le Mur -->
+      <button id="nav-btn-wall" class="nav-item" aria-label="Le Mur">
+        <span class="nav-icon">
+          <!-- SVG Mur / Feed -->
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </span>
+        <span class="nav-label">Le Mur</span>
+      </button>
+    </nav>
+  </div>
+
+  <script src="/script.js"></script>
+</body>
+</html>
