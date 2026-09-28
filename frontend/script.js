@@ -24,9 +24,14 @@ const state = {
   activeTab: 'counter', // 'counter' | 'wall'
   counterValue: 0,
   selectedCategory: 'Tous',
+  sortMode: 'hot',           // 'hot' | 'recent' | 'top'
+  seenPostIds: new Set(      // Déduplication : posts déjà vus (persisté en localStorage)
+    JSON.parse(localStorage.getItem('wanda_seen_posts') || '[]')
+  ),
   drawerCategories: new Set(),
   posts: [],
   userReactions: JSON.parse(localStorage.getItem('wanda_reactions') || '{}'),
+  userReports: JSON.parse(localStorage.getItem('wanda_reports') || '{}'),
   theme: localStorage.getItem('wanda_theme') || 'charbon',
   emojiAnim: localStorage.getItem('wanda_emoji_anim') || 'explosion',
   soundEnabled: localStorage.getItem('wanda_sound_enabled') !== 'false',
@@ -195,16 +200,36 @@ function formatNumber(num) {
   return new Intl.NumberFormat('fr-FR').format(num);
 }
 
+const counterStatusBanner = document.getElementById('counter-status-banner');
+
 async function fetchCounter() {
+  let data = null;
+
   try {
     const res = await fetch(`${API_URL}/counter`);
+
     if (res.ok) {
-      const data = await res.json();
+      data = await res.json();
       state.counterValue = data.total;
       counterValueEl.textContent = formatNumber(data.total);
+    } else {
+      // 503 : compteur réellement indisponible. On masque la valeur plutôt que
+      // de laisser un « 0 » qui se lit comme un vrai décompte.
+      state.counterValue = null;
+      counterValueEl.textContent = '—';
+      if (counterStatusBanner) {
+        counterStatusBanner.hidden = false;
+        counterStatusBanner.textContent = 'Compteur indisponible.';
+      }
     }
   } catch (err) {
     console.error('Erreur chargement compteur', err);
+    state.counterValue = null;
+    counterValueEl.textContent = '—';
+    if (counterStatusBanner) {
+      counterStatusBanner.hidden = false;
+      counterStatusBanner.textContent = 'Compteur indisponible.';
+    }
   }
 }
 
@@ -212,14 +237,20 @@ async function handleWandaClick() {
   playTactileClick();
   triggerHaptic([30, 40, 20]);
 
-  // Incrément optimiste immédiat
-  state.counterValue += 1;
-  counterValueEl.textContent = formatNumber(state.counterValue);
+  // Incrément optimiste immédiat.
+  // Si le compteur était marqué indisponible (null), on ne repart pas de 1 :
+  // le serveur fera foi dès la réponse.
+  if (typeof state.counterValue === 'number') {
+    state.counterValue += 1;
+    counterValueEl.textContent = formatNumber(state.counterValue);
+  }
   counterValueEl.classList.remove('bump');
   void counterValueEl.offsetWidth; // Force reflow
   counterValueEl.classList.add('bump');
 
-  let rank = state.counterValue;
+  let rank = null;
+  let failed = false;
+  let dejaCompte = false;
 
   try {
     const res = await fetch(`${API_URL}/counter/increment`, {
@@ -229,12 +260,39 @@ async function handleWandaClick() {
         'x-client-token': clientToken
       }
     });
+
     if (res.ok) {
       const data = await res.json();
-      rank = data.rank || rank;
+      rank = data.rank || null;
+      dejaCompte = data.alreadyCounted === true;
+      // Le total fait autorité sur l'estimation optimiste.
+      if (typeof data.total === 'number') {
+        state.counterValue = data.total;
+        counterValueEl.textContent = formatNumber(data.total);
+      }
+    } else {
+      // Le serveur a refusé (503 le plus souvent). On ne prétend pas que le
+      // vote a été compté : on prévient, sinon le chiffre affiché ment.
+      failed = true;
     }
   } catch (e) {
-    // Garde la valeur optimiste
+    failed = true;
+  }
+
+  if (failed) {
+    if (typeof state.counterValue === 'number') {
+      state.counterValue = Math.max(0, state.counterValue - 1);
+      counterValueEl.textContent = formatNumber(state.counterValue);
+    }
+    showToast("Compteur indisponible. Ton wanda n'a pas été compté.", 'error');
+    return;
+  }
+
+  // Le compteur compte des personnes, pas des clics : re-cliquer dans la journée
+  // ne change rien. Sans ce message, l'utilisateur voit son incrément
+  // disparaître et pense à un bug.
+  if (dejaCompte) {
+    showToast("Tu as déjà compté aujourd'hui. Le compteur ne compte que les personnes.", 'info');
   }
 
   // Ouvrir le tiroir pour proposer d'écrire son Wanda
@@ -254,11 +312,24 @@ const drawerSubtitle = document.getElementById('drawer-subtitle');
 const wandaForm = document.getElementById('wanda-form');
 const postText = document.getElementById('post-text');
 const charCount = document.getElementById('char-count');
+const btnSubmitWanda = document.getElementById('btn-submit-wanda');
+const MAX_POST_LENGTH = Number(postText.getAttribute('maxlength')) || 140;
 const formCatTags = document.querySelectorAll('.form-cat-tag');
+
+/**
+ * Formate un rang en français : 1re, 2e, 3e…
+ *
+ * Le compteur renvoie désormais le VRAI rang de la personne parmi les
+ * participants du jour, donc « Tu es la 248e personne » est enfin exact. La
+ * première personne doit se lire « 1re », pas « 1e ».
+ */
+function formatRank(n) {
+  return n === 1 ? '1re' : `${formatNumber(n)}e`;
+}
 
 function openDrawer(rank = null) {
   if (rank) {
-    drawerSubtitle.textContent = `Tu es la ${formatNumber(rank)}e personne à wanda aujourd'hui. Raconte ta galère !`;
+    drawerSubtitle.textContent = `Tu es la ${formatRank(rank)} personne à wanda aujourd'hui. Raconte ta galère !`;
   } else {
     drawerSubtitle.textContent = "140 caractères anonymes • Zéro filtre, zéro jugement";
   }
@@ -282,15 +353,22 @@ btnSkipDrawer.addEventListener('click', closeDrawer);
 drawerBackdrop.addEventListener('click', closeDrawer);
 
 // Compteur dynamique de caractères
-postText.addEventListener('input', () => {
-  const remaining = 140 - postText.value.length;
-  charCount.textContent = remaining;
+function updateCharCount() {
+  const remaining = MAX_POST_LENGTH - postText.value.length;
+
+  // Une valeur posée par script peut dépasser `maxlength` : le compteur ne
+  // doit jamais afficher un nombre négatif ni laisser envoyer ce texte.
+  charCount.textContent = Math.max(0, remaining);
+  btnSubmitWanda.disabled = postText.value.length > MAX_POST_LENGTH;
   if (remaining < 20) {
     charCount.style.color = 'var(--color-wanda-red)';
   } else {
     charCount.style.color = 'var(--text-sub)';
   }
-});
+}
+
+postText.addEventListener('input', updateCharCount);
+updateCharCount();
 
 // Sélection des hashtags
 formCatTags.forEach(btn => {
@@ -348,6 +426,7 @@ wandaForm.addEventListener('submit', async (e) => {
   }
 });
 
+
 // ==========================================
 // LE MUR DES WANDAS (POSTS FEED)
 // ==========================================
@@ -355,21 +434,46 @@ const postsStream = document.getElementById('posts-stream');
 const wallLoading = document.getElementById('wall-loading');
 const btnRefreshPosts = document.getElementById('btn-refresh-posts');
 const categoryPills = document.querySelectorAll('.cat-pill');
+const sortTabButtons = document.querySelectorAll('.sort-tab');
 
-// Filtres de catégories
+// ---- Handlers : Onglets de tri ----
+sortTabButtons.forEach(tab => {
+  tab.addEventListener('click', () => {
+    sortTabButtons.forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-pressed', 'false');
+    });
+    tab.classList.add('active');
+    tab.setAttribute('aria-pressed', 'true');
+    state.sortMode = tab.getAttribute('data-sort');
+    // Réinitialiser la déduplication lors d'un changement de tri
+    loadPosts(true);
+  });
+});
+
+// ---- Handlers : Filtres catégories ----
 categoryPills.forEach(pill => {
   pill.addEventListener('click', () => {
     categoryPills.forEach(p => p.classList.remove('active'));
     pill.classList.add('active');
     state.selectedCategory = pill.getAttribute('data-category');
-    loadPosts();
+    loadPosts(true);
   });
 });
 
 btnRefreshPosts.addEventListener('click', () => {
   triggerHaptic([15]);
-  loadPosts();
+  loadPosts(true);
 });
+
+/**
+ * Persistance des posts vus (localStorage cap à 200 IDs max)
+ */
+function markPostsAsSeen(posts) {
+  posts.forEach(p => state.seenPostIds.add(p.id));
+  const arr = Array.from(state.seenPostIds).slice(-200);
+  localStorage.setItem('wanda_seen_posts', JSON.stringify(arr));
+}
 
 function timeAgo(dateString) {
   const date = new Date(dateString);
@@ -383,24 +487,66 @@ function timeAgo(dateString) {
   return `Il y a ${days} j`;
 }
 
-async function loadPosts() {
-  wallLoading.style.display = 'flex';
-  postsStream.innerHTML = '';
+/**
+ * Charge les posts depuis l'API
+ * @param {boolean} reset - true = recharge complète (efface le stream)
+ */
+async function loadPosts(reset = false) {
+  if (reset) {
+    wallLoading.style.display = 'flex';
+    postsStream.innerHTML = '';
+  }
 
   try {
-    const url = state.selectedCategory === 'Tous'
-      ? `${API_URL}/posts`
-      : `${API_URL}/posts?category=${encodeURIComponent(state.selectedCategory)}`;
+    // Paramètres de requête
+    const params = new URLSearchParams({ sort: state.sortMode, limit: '50' });
 
-    const res = await fetch(url);
+    if (state.selectedCategory !== 'Tous') {
+      params.set('category', state.selectedCategory);
+    }
+
+    // Envoyer les IDs des posts déjà vus (max 30) pour que le backend priorise les inédits
+    if (state.seenPostIds.size > 0 && state.sortMode === 'hot') {
+      const recentSeen = Array.from(state.seenPostIds).slice(-30).join(',');
+      params.set('seen', recentSeen);
+    }
+
+    const res = await fetch(`${API_URL}/posts?${params.toString()}`);
+    if (!res.ok) {
+      // Sur une route `/api/posts` valide, une 503 contient un message JSON.
+      // Ne pas supposer ce format : un proxy ou une page d'erreur HTML doit
+      // produire la même erreur lisible côté client.
+      let message = 'Mur indisponible. Réessaie dans un instant.';
+      try {
+        const erreur = await res.json();
+        if (erreur && typeof erreur.error === 'string' && erreur.error.trim()) {
+          message = erreur.error.trim();
+        }
+      } catch (_) {
+        // Corps non JSON : conserver le message générique ci-dessus.
+      }
+      throw new Error(message);
+    }
+
     const posts = await res.json();
+    if (!Array.isArray(posts)) {
+      throw new Error('Réponse inattendue du serveur.');
+    }
+
     state.posts = posts;
 
-    renderPosts(posts);
+    // Marquer les posts chargés comme vus
+    markPostsAsSeen(posts);
+
+    renderPosts(posts, reset);
   } catch (err) {
+    // L'erreur doit s'afficher dans tous les cas, pas seulement sur un
+    // rechargement explicite : `switchTab('wall')` appelle `loadPosts()` sans
+    // `reset`, et une panne réseau produisait sinon un mur vide silencieux.
     postsStream.innerHTML = `
-      <div style="text-align: center; color: var(--text-sub); padding: 40px 0;">
+      <div class="empty-state">
         <p>Impossible de charger les wandas.</p>
+        <p class="empty-hint">Vérifie ta connexion et réessaie.</p>
       </div>
     `;
   } finally {
@@ -408,12 +554,80 @@ async function loadPosts() {
   }
 }
 
+// ---- Polling : badge "Nouveau" sur l'onglet Récents ----
+let lastKnownPostId = null;
+let newPostCount = 0;
+
+async function pollNewPosts() {
+  if (state.activeTab !== 'wall') return;
+
+  try {
+    const res = await fetch(`${API_URL}/posts?sort=recent&limit=1`);
+    const latest = await res.json();
+    if (latest && latest[0]) {
+      const topId = latest[0].id;
+      if (lastKnownPostId === null) {
+        lastKnownPostId = topId;
+      } else if (topId !== lastKnownPostId && !state.seenPostIds.has(topId)) {
+        newPostCount++;
+        updateRecentBadge(newPostCount);
+        lastKnownPostId = topId;
+      }
+    }
+  } catch (_) { /* silencieux */ }
+}
+
+function updateRecentBadge(count) {
+  const recentTab = document.querySelector('.sort-tab[data-sort="recent"]');
+  if (!recentTab) return;
+  let badge = recentTab.querySelector('.new-badge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'new-badge';
+    recentTab.appendChild(badge);
+  }
+  badge.textContent = count > 9 ? '9+' : String(count);
+}
+
+function clearRecentBadge() {
+  const badge = document.querySelector('.sort-tab[data-sort="recent"] .new-badge');
+  if (badge) badge.remove();
+  newPostCount = 0;
+}
+
+// Effacer le badge quand on clique sur "Récents"
+document.querySelector('.sort-tab[data-sort="recent"]')?.addEventListener('click', clearRecentBadge);
+
+// Polling toutes les 30 secondes
+setInterval(pollNewPosts, 30000);
+
+
+
+/**
+ * Marque visuellement un signalement déjà transmis et le mémorise.
+ *
+ * Avant, le bouton revenait à son état initial après l'envoi : rien ne disait
+ * « c'est fait ». Le marquage persiste dans le navigateur comme les réactions.
+ */
+function markReportButtonAsSent(button) {
+  button.classList.add('reported');
+  button.disabled = true;
+  button.setAttribute('aria-pressed', 'true');
+  button.title = 'Tu as déjà signalé ce wanda';
+}
+
+function saveUserReport(postId, button) {
+  state.userReports[postId] = true;
+  localStorage.setItem('wanda_reports', JSON.stringify(state.userReports));
+  markReportButtonAsSent(button);
+}
+
 function renderPosts(posts) {
   if (!posts || posts.length === 0) {
     postsStream.innerHTML = `
-      <div style="text-align: center; color: var(--text-sub); padding: 40px 0;">
+      <div class="empty-state">
         <p>Aucun wanda pour le moment dans cette catégorie.</p>
-        <p style="font-size: 13px; margin-top: 6px;">Sois le premier à raconter ta galère !</p>
+        <p class="empty-hint">Sois le premier à raconter ta galère !</p>
       </div>
     `;
     return;
@@ -505,6 +719,9 @@ function createPostCard(post) {
 
   // Écouteur de signalement
   const reportBtn = card.querySelector('.btn-report');
+  if (state.userReports[post.id]) {
+    markReportButtonAsSent(reportBtn);
+  }
   reportBtn.addEventListener('click', () => {
     handleReport(post.id, card);
   });
@@ -768,11 +985,30 @@ async function handleReaction(postId, type, btn, event) {
       },
       body: JSON.stringify({ postId: parseInt(postId, 10), type })
     });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
     const data = await res.json();
+
     if (data.reactions && data.reactions[type] !== undefined) {
       countEl.textContent = data.reactions[type];
     }
-  } catch (err) {}
+  } catch (err) {
+    // L'écriture a échoué : on annule la mise à jour optimiste plutôt que de
+    // laisser une réaction qui n'existe pas côté serveur. Avant, l'erreur était
+    // avalée silencieusement et le compteur local mentait.
+    btn.classList.toggle('active', !isAlreadyActive);
+    countEl.textContent = currentCount;
+    if (isAlreadyActive) {
+      state.userReactions[key] = true;
+    } else {
+      delete state.userReactions[key];
+    }
+    localStorage.setItem('wanda_reactions', JSON.stringify(state.userReactions));
+    showToast('Réaction non enregistrée. Réessaie.', 'error');
+  }
 }
 
 async function handleReport(postId, card) {
@@ -783,19 +1019,34 @@ async function handleReport(postId, card) {
   try {
     const res = await fetch(`${API_URL}/reports`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-token': clientToken
+      },
       body: JSON.stringify({ postId })
     });
-    const data = await res.json();
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      showToast(data.error || "Signalement impossible pour le moment.", 'error');
+      return;
+    }
 
     if (data.hidden) {
       card.remove();
       showToast("Publication masquée suite à plusieurs signalements.", "success");
+    } else if (data.alreadyReported) {
+      saveUserReport(postId, card.querySelector('.btn-report'));
+      showToast("Tu avais déjà signalé ce wanda.", "info");
     } else {
+      saveUserReport(postId, card.querySelector('.btn-report'));
       showToast("Signalement bien reçu par la communauté.", "success");
     }
   } catch (err) {
-    showToast("Signalement enregistré.", "success");
+    // Plus de « Signalement enregistré » sur erreur : le signalement n'a pas
+    // été transmis, le dire serait faux.
+    showToast("Signalement non transmis. Vérifie ta connexion.", 'error');
   }
 }
 

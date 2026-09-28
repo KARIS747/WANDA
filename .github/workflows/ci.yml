@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    # Un service Postgres éphémère : les tests d'intégration vérifient la
+    # déduplication du compteur, les quotas et les migrations, et ces
+    # comportements ne peuvent pas être testés correctement sur du mock.
+    #
+    # La suite tourne sur LES DEUX moteurs : SQLite seul ne peut pas attraper
+    # une requête valide en SQLite mais invalide en PostgreSQL (un alias de
+    # sortie utilisé dans une expression d'ORDER BY, par exemple). C'est
+    # précisément ce qui a laissé passer un ORDER BY cassant la vue par défaut
+    # en production, invisible en local.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wanda_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # `TEST_DATABASE_URL`, et jamais `DATABASE_URL` : la suite fait des
+      # TRUNCATE et refuse par construction d'écrire dans une base dont le nom
+      # ne ressemble pas à une base jetable.
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wanda_test
+      SALT_SECRET: ci_secret_de_test_uniquement
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Vérifier la syntaxe
+        run: npm run lint
+
+      - name: Tests sur SQLite
+        run: npm test
+        env:
+          TEST_DATABASE_URL: ''
+
+      - name: Tests sur PostgreSQL
+        run: npm test
+
+  manifest:
+    name: Cohérence des fichiers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Le manifest est du JSON valide
+        run: node -e "JSON.parse(require('fs').readFileSync('frontend/manifest.json','utf8'))"
+
+      - name: Toutes les icônes déclarées existent
+        run: |
+          node -e "
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('frontend/manifest.json','utf8'));
+            const missing = m.icons
+              .map(i => 'frontend' + i.src)
+              .filter(p => !fs.existsSync(p));
+            if (missing.length) {
+              console.error('Icônes manquantes :', missing);
+              process.exit(1);
+            }
+            console.log(m.icons.length + ' icônes vérifiées.');
+          "
+
+      - name: Le service worker pré-cache des fichiers existants
+        run: |
+          node -e "
+            const fs = require('fs');
+            const sw = fs.readFileSync('frontend/sw.js','utf8');
+            const list = sw.match(/const SHELL_ASSETS = \[([\s\S]*?)\]/)[1];
+            const files = list.match(/'([^']+)'/g).map(s => s.replace(/'/g,''));
+            const missing = files
+              .filter(f => f !== '/')
+              .map(f => 'frontend' + f)
+              .filter(p => !fs.existsSync(p));
+            if (missing.length) {
+              console.error('Fichiers pré-cachés manquants :', missing);
+              process.exit(1);
+            }
+            console.log(files.length + ' entrées de pré-cache vérifiées.');
+          "
+
+      - name: Pas de secret committé
+        run: |
+          set -euo pipefail
+          fail=0
+
+          # 1. Jeton GitHub, quel que soit le fichier.
+          if git grep -nE 'gh[pousr]_[A-Za-z0-9]{20,}' -- ':!*.example'; then
+            echo "❌ Jeton GitHub committé."
+            fail=1
+          fi
+
+          # 2. Chaîne de connexion avec identifiants réels.
+          #    On ignore les exemples documentés (hôtes de démonstration,
+          #    identifiants de substitution) et les bases locales.
+          hits=$(git grep -nE 'postgres(ql)?://[^:[:space:]]+:[^@[:space:]]+@' -- \
+            ':!package-lock.json' ':!*.example' ':!README.md' ':!.github/workflows/*' \
+            | grep -v -E '@(localhost|127\.0\.0\.1)(:|/|$)' \
+            | grep -v -E '//(user|username|myuser|<[^>]*>):(password|passwd|secret|changeme|xxx|\*+)' || true)
+
+          if [ -n "$hits" ]; then
+            echo "❌ Identifiants de base de données committés :"
+            echo "$hits"
+            fail=1
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            exit 1
+          fi
+          echo "Aucun secret détecté."

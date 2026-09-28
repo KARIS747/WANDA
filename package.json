@@ -5,10 +5,15 @@
   "main": "backend/server.js",
   "scripts": {
     "start": "node backend/server.js",
-    "dev": "node --watch backend/server.js"
+    "dev": "node --watch backend/server.js",
+    "test": "node --test test/",
+    "lint": "node --check backend/server.js && node --check backend/db.js && node --check backend/migrations.js && node --check backend/routes/posts.js && node --check backend/routes/counter.js && node --check backend/routes/reactions.js && node --check backend/routes/reports.js && node --check backend/middleware/rateLimiter.js && node --check backend/middleware/wordFilter.js && node --check frontend/script.js && node --check frontend/sw.js",
+    "icons": "bash scripts/generate-icons.sh"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
-    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "helmet": "^7.1.0",
@@ -19,8 +24,7 @@
     "wanda",
     "pwa",
     "solidarite",
-    "anonyme",
-    "neon"
+    "anonyme"
   ],
   "author": "WANDA Community",
   "license": "MIT"

@@ -1,50 +1,168 @@
 const express = require('express');
 const router = express.Router();
-const { pool } = require('../db');
+const {
+  query,
+  parseJsonColumn,
+  toIso,
+  nowIso,
+  getCameroonDayStartIso
+} = require('../db');
+const {
+  ageHoursSql,
+  jsonAggSql,
+  emptyJsonObjectSql,
+  categoryContainsSql
+} = require('../sql');
 const { checkContentModeration } = require('../middleware/wordFilter');
 const { postRateLimiter } = require('../middleware/rateLimiter');
 
-// Fallback en mémoire
-let memoryPosts = [
-  {
-    id: 1,
-    texte: "Coupure de lumière depuis 6h du matin à Makepe... Tout ce qui est dans le congélateur a déjà commencé à wanda !",
-    categories: ["#NEPA", "#Cameroun"],
-    created_at: new Date(Date.now() - 15 * 60000).toISOString(),
-    status: "active",
-    report_count: 0,
-    reactions: { wanda: 34, courage: 12, mdr: 28, priere: 5, chaud: 19 }
-  },
-  {
-    id: 2,
-    texte: "Bouchon de Ndokoti bloqué depuis 2 heures. Le benskinneur me dit de descendre marcher sous la pluie... Seigneur !",
-    categories: ["#Embouteillage", "#Benskin"],
-    created_at: new Date(Date.now() - 45 * 60000).toISOString(),
-    status: "active",
-    report_count: 0,
-    reactions: { wanda: 52, courage: 21, mdr: 64, priere: 8, chaud: 31 }
-  },
-  {
-    id: 3,
-    texte: "Le prix du maquereau au marché Mfoundi a encore augmenté ce matin. On va bientôt manger l'air conditionné.",
-    categories: ["#Prix", "#Humour"],
-    created_at: new Date(Date.now() - 90 * 60000).toISOString(),
-    status: "active",
-    report_count: 0,
-    reactions: { wanda: 41, courage: 16, mdr: 85, priere: 3, chaud: 22 }
-  }
-];
+// Garde-fou : la liste `seen` vient du client. Sans plafond, un appelant
+// pourrait envoyer des milliers d'IDs et faire exploser la requête SQL.
+const MAX_SEEN_IDS = 500;
+const MAX_LIMIT = 100;
 
 /**
- * GET /api/posts
- * Récupère les posts actifs avec leurs totaux de réactions
+ * Longueur maximale d'un wanda.
+ *
+ * Cette limite n'est PAS appliquée par la base : la colonne `posts.texte` est
+ * un `TEXT` sur les deux moteurs, et ni SQLite ni PostgreSQL n'en imposent une.
+ * Elle n'existe qu'ici, dans le code applicatif. D'où l'export : les tests
+ * l'importent au lieu de recopier le nombre, parce qu'un « 140 » recopié dans
+ * un test ne vérifie rien — le test passe alors que la route accepte 300
+ * caractères.
  */
-router.get('/', async (req, res) => {
-  const { category, limit = 50 } = req.query;
+const MAX_TEXTE_LENGTH = 140;
 
-  try {
-    let query = `
-      SELECT 
+/**
+ * Valide le corps d'une publication.
+ *
+ * Fonction pure, sans accès base : c'est ce qui la rend testable. Elle renvoie
+ * le texte nettoyé ou la raison du refus, pour que la route n'ait plus qu'à
+ * traduire en réponse HTTP.
+ */
+function validateTexte(texte) {
+  if (!texte || typeof texte !== 'string' || texte.trim().length === 0) {
+    return { ok: false, error: 'Le texte ne peut pas être vide.' };
+  }
+  const cleanText = texte.trim();
+  if (cleanText.length > MAX_TEXTE_LENGTH) {
+    return {
+      ok: false,
+      error: `Un wanda doit faire ${MAX_TEXTE_LENGTH} caractères maximum.`
+    };
+  }
+  return { ok: true, text: cleanText };
+}
+
+/**
+ * Score HOT (formule inspirée de Reddit) :
+ *   score = total des réactions / (âge en heures + 2)^1.5
+ *
+ * Cette implémentation JavaScript est la RÉFÉRENCE. Le classement est
+ * désormais calculé en SQL par `ageHoursSql`, qui produit la même formule
+ * traduite pour chaque moteur — mais SQL et JS sont deux implémentations
+ * distinctes de la même arithmétique, et le test `hot-score-parity.test.js`
+ * continue de vérifier qu'elles restent d'accord.
+ */
+function computeHotScore(reactions, createdAt, now = Date.now()) {
+  const total = (reactions?.wanda || 0)
+    + (reactions?.courage || 0)
+    + (reactions?.mdr || 0)
+    + (reactions?.priere || 0)
+    + (reactions?.chaud || 0);
+
+  const ageHours = (now - new Date(createdAt).getTime()) / 3_600_000;
+  return total / Math.pow(ageHours + 2, 1.5);
+}
+
+/**
+ * Construit la requête du fil : filtres, tri, agrégat de réactions.
+ *
+ * Toute la construction SQL vit ici, et non dans la route, pour que les tests
+ * exercent la VRAIE requête. Une version antérieure laissait le SQL dans le
+ * handler ; les tests recopièrent alors leur propre clause ORDER BY, et
+ * n'auraient rien attrapé d'une régression de la production — c'est-à-dire
+ * exactement le bug qu'ils étaient censés couvrir.
+ *
+ * @param {object}  options
+ * @param {string}  options.category  catégorie filtrée, ou vide / 'Tous'
+ * @param {string}  options.sort      'hot' (défaut) | 'recent' | 'top'
+ * @param {number[]} options.seenIds  identifiants déjà vus, à exclure
+ * @param {number}  options.limit      nombre maximal de lignes
+ * @returns {{sql: string, params: Array}}
+ */
+function buildFeedQuery({ category, sort, seenIds = [], limit }) {
+  const params = [];
+  const where = [`p.status = 'active'`];
+
+  // Filtre par catégorie : correspondance exacte sur le tableau JSON.
+  // `categoryContainsSql` renvoie le fragment ET le paramètre attendus par le
+  // moteur courant — la syntaxe est la même des deux côtés, mais pas la forme
+  // du paramètre (Postgres veut le tableau JSON sérialisé, SQLite la valeur
+  // scalaire). Voir `categoryContainsSql` pour le détail.
+  if (category && category !== 'Tous') {
+    const filter = categoryContainsSql(
+      'p.categories',
+      `$${params.length + 1}`,
+      category
+    );
+    params.push(filter.param);
+    where.push(filter.sql);
+  }
+
+  // Déduplication locale : les posts déjà vus sont écartés du résultat tant
+  // qu'il reste du contenu inédit. Le repli est dans `fetchFeedPosts` : sans
+  // lui, un visiteur régulier dont `seen` couvre tout le corpus voyait un mur
+  // vide alors que la base contient des posts actifs.
+  if (seenIds.length > 0) {
+    const start = params.length + 1;
+    where.push(
+      `p.id NOT IN (${seenIds.map((_, i) => `$${start + i}`).join(', ')})`
+    );
+    seenIds.forEach((id) => params.push(id));
+  }
+
+  let whereClause = `WHERE ${where.join(' AND ')}`;
+  let orderClause;
+
+  if (sort === 'recent') {
+    orderClause = `ORDER BY p.created_at DESC`;
+  } else if (sort === 'top') {
+    /**
+     * Top du jour. La frontière est calculée en JS (`getCameroonDayStartIso`),
+     * plus en SQL : CURRENT_DATE est en UTC côté SQLite, ce qui décalerait la
+     * bascule de minuit d'une heure et ferait entrer dans le « top » des posts
+     * de la veille entre 00h et 01h WAT — précisément l'heure de bascule.
+     */
+    params.push(getCameroonDayStartIso());
+    whereClause += ` AND p.created_at >= $${params.length}`;
+    orderClause = `ORDER BY total_reactions DESC, p.created_at DESC`;
+  } else {
+    /**
+     * Mode HOT par défaut, calculé en SQL : c'est la référence.
+     * `ageHoursSql` donne l'âge en heures pour le moteur courant, ce qui évite
+     * d'écrire EXTRACT (Postgres) ou une arithmétique epoch (SQLite) ici.
+     */
+    // Ne pas réutiliser l'alias `total_reactions` ici : PostgreSQL n'accepte
+    // un nom de colonne de sortie dans ORDER BY que s'il est *seul* dans
+    // l'expression. Encapsulé dans COALESCE/POWER, il est résolu comme une
+    // colonne d'entrée, qui n'existe pas -> « column "total_reactions" does
+    // not exist ». SQLite, plus laxiste, acceptait l'alias et masquait donc
+    // l'erreur. On répète l'agrégat, ce qui est valide sur les deux moteurs.
+    orderClause = `ORDER BY
+        COALESCE(SUM(r.count), 0) / POWER(
+          ${ageHoursSql('p.created_at')} + 2,
+          1.5
+        ) DESC,
+        p.created_at DESC`;
+  }
+
+  const limitParam = `$${params.length + 1}`;
+  params.push(limit);
+
+  return {
+    sql: `
+      SELECT
         p.id,
         p.texte,
         p.categories,
@@ -52,51 +170,114 @@ router.get('/', async (req, res) => {
         p.status,
         p.report_count,
         COALESCE(
-          json_object_agg(
-            r.type, r.count
-          ) FILTER (WHERE r.type IS NOT NULL), 
-          '{}'::json
-        ) AS reactions
+          ${jsonAggSql()}(r.type, r.count) FILTER (WHERE r.type IS NOT NULL),
+          ${emptyJsonObjectSql()}
+        ) AS reactions,
+        COALESCE(SUM(r.count), 0) AS total_reactions
       FROM posts p
       LEFT JOIN (
         SELECT post_id, type, COUNT(*) AS count
         FROM reactions
         GROUP BY post_id, type
       ) r ON p.id = r.post_id
-      WHERE p.status = 'active'
-    `;
+      ${whereClause}
+      GROUP BY p.id
+      ${orderClause}
+      LIMIT ${limitParam}
+    `,
+    params
+  };
+}
 
-    const params = [];
-    if (category && category !== 'Tous') {
-      params.push(`%"${category}"%`);
-      query += ` AND p.categories::text ILIKE $${params.length}`;
-    }
+/**
+ * Exécute le fil avec le repli « contenu déjà vu ».
+ *
+ * 1. La requête exclut d'abord les identifiants `seenIds`, ce qui priorise les
+ *    posts inédits.
+ * 2. Si ce premier passage renvoie zéro ligne alors que des identifiants
+ *    étaient fournis, la même requête est rejouée sans `seenIds`.
+ *
+ * Le second passage conserve tous les autres filtres, donc un post masqué ne
+ * réapparaît jamais. Une base réellement vide renvoie toujours zéro ligne.
+ *
+ * @param {object}  options
+ * @param {string}  options.category
+ * @param {string}  options.sort
+ * @param {number[]} options.seenIds
+ * @param {number}  options.limit
+ * @returns {Promise<Array>} lignes brutes du fil.
+ */
+async function fetchFeedPosts({ category, sort, seenIds = [], limit }) {
+  const { sql, params } = buildFeedQuery({ category, sort, seenIds, limit });
+  const { rows } = await query(sql, params);
 
-    query += ` GROUP BY p.id ORDER BY p.created_at DESC LIMIT $${params.length + 1}`;
-    params.push(parseInt(limit, 10) || 50);
+  if (rows.length === 0 && seenIds.length > 0) {
+    const retry = buildFeedQuery({ category, sort, seenIds: [], limit });
+    const fallback = await query(retry.sql, retry.params);
+    return fallback.rows;
+  }
 
-    const result = await pool.query(query, params);
+  return rows;
+}
 
-    // Formater les réactions par défaut
-    const formatted = result.rows.map(post => ({
-      ...post,
-      reactions: {
-        wanda: post.reactions?.wanda || 0,
-        courage: post.reactions?.courage || 0,
-        mdr: post.reactions?.mdr || 0,
-        priere: post.reactions?.priere || 0,
-        chaud: post.reactions?.chaud || 0
-      }
-    }));
+// ============================================================
+// GET /api/posts
+// Paramètres :
+//   ?sort=hot|recent|top    (défaut: hot)
+//   ?category=#NEPA|Tous    (défaut: Tous)
+//   ?limit=50               (défaut: 50, plafonné à 100)
+//   ?seen=1,2,3             (IDs déjà vus — priorisés, pas définitivement exclus)
+// ============================================================
+router.get('/', async (req, res) => {
+  const { category, sort = 'hot', seen = '' } = req.query;
+
+  const parsedLimit = parseInt(req.query.limit, 10);
+  const limit = Math.min(Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50, MAX_LIMIT);
+
+  const seenIds = seen
+    ? seen
+        .split(',')
+        .map((id) => parseInt(id, 10))
+        .filter((id) => Number.isInteger(id) && id > 0)
+        .slice(0, MAX_SEEN_IDS)
+    : [];
+
+  try {
+    const rows = await fetchFeedPosts({ category, sort, seenIds, limit });
+    const formatted = rows.map((post) => {
+      // `reactions` arrive en objet sur Postgres (JSONB déjà désérialisé) et en
+      // texte JSON sur SQLite. Sans parseJsonColumn, les compteurs seraient
+      // undefined en local et corrects en prod.
+      const rawReactions = parseJsonColumn(post.reactions, {});
+
+      return {
+        id: post.id,
+        texte: post.texte,
+        categories: parseJsonColumn(post.categories, []),
+        created_at: toIso(post.created_at),
+        status: post.status,
+        report_count: post.report_count,
+        total_reactions: parseInt(post.total_reactions, 10),
+        reactions: {
+          wanda: parseInt(rawReactions?.wanda || 0, 10),
+          courage: parseInt(rawReactions?.courage || 0, 10),
+          mdr: parseInt(rawReactions?.mdr || 0, 10),
+          priere: parseInt(rawReactions?.priere || 0, 10),
+          chaud: parseInt(rawReactions?.chaud || 0, 10)
+        }
+      };
+    });
 
     return res.json(formatted);
   } catch (err) {
-    // Mode fallback
-    let filtered = memoryPosts.filter(p => p.status === 'active');
-    if (category && category !== 'Tous') {
-      filtered = filtered.filter(p => p.categories.includes(category));
-    }
-    return res.json(filtered);
+    // Une base locale SQLite ne peut pas être « injoignable » au sens réseau :
+    // si la requête échoue, c'est un vrai problème (fichier corrompu, disque
+    // plein, schéma obsolète) qu'il faut remonter, jamais masquer derrière des
+    // données fictives.
+    console.error('[posts] lecture échouée:', err.message);
+    return res.status(503).json({
+      error: 'Mur indisponible. Réessaie dans un instant.'
+    });
   }
 });
 
@@ -107,54 +288,60 @@ router.get('/', async (req, res) => {
 router.post('/', postRateLimiter, async (req, res) => {
   const { texte, categories = [] } = req.body;
 
-  // Validation longueur (140 caractères max)
-  if (!texte || typeof texte !== 'string' || texte.trim().length === 0) {
-    return res.status(400).json({ error: "Le texte ne peut pas être vide." });
+  const validation = validateTexte(texte);
+  if (!validation.ok) {
+    return res.status(400).json({ error: validation.error });
   }
+  const cleanText = validation.text;
 
-  const cleanText = texte.trim();
-  if (cleanText.length > 140) {
-    return res.status(400).json({ error: "Un wanda doit faire 140 caractères maximum." });
-  }
-
-  // Modération de contenu (Pas de politique, pas de haine)
   const moderation = await checkContentModeration(cleanText);
   if (!moderation.valid) {
     return res.status(400).json({ error: moderation.reason });
   }
 
-  // Assainissement des catégories
   const cleanCategories = Array.isArray(categories)
-    ? categories.slice(0, 3).map(c => (c.startsWith('#') ? c : `#${c}`).trim())
+    ? categories
+        .slice(0, 3)
+        .filter((c) => typeof c === 'string' && c.trim().length > 0)
+        .map((c) => (c.startsWith('#') ? c : `#${c}`).trim())
     : [];
 
   try {
-    const result = await pool.query(`
-      INSERT INTO posts (texte, categories, status)
-      VALUES ($1, $2, 'active')
-      RETURNING id, texte, categories, created_at, status, report_count;
-    `, [cleanText, JSON.stringify(cleanCategories)]);
+    // `created_at` est fourni explicitement : SQLite ne ferait qu'une précision à
+    // la seconde, ce qui confondrait plusieurs posts publiés dans la même
+    // seconde, alors que le tri « hot » et le classement « récent » doivent
+    // pouvoir les départager. La même horloge (JS) est utilisée partout.
+    const result = await query(
+      `INSERT INTO posts (texte, categories, status, created_at)
+       VALUES ($1, $2, 'active', $3)
+       RETURNING id, texte, categories, created_at, status, report_count`,
+      [cleanText, JSON.stringify(cleanCategories), nowIso()]
+    );
 
-    const newPost = {
-      ...result.rows[0],
+    const post = result.rows[0];
+
+    return res.status(201).json({
+      ...post,
+      categories: parseJsonColumn(post.categories, cleanCategories),
+      created_at: toIso(post.created_at),
+      total_reactions: 0,
       reactions: { wanda: 0, courage: 0, mdr: 0, priere: 0, chaud: 0 }
-    };
-
-    return res.status(201).json(newPost);
+    });
   } catch (err) {
-    // Mode fallback en mémoire
-    const newPost = {
-      id: Date.now(),
-      texte: cleanText,
-      categories: cleanCategories,
-      created_at: new Date().toISOString(),
-      status: "active",
-      report_count: 0,
-      reactions: { wanda: 0, courage: 0, mdr: 0, priere: 0, chaud: 0 }
-    };
-    memoryPosts.unshift(newPost);
-    return res.status(201).json(newPost);
+    console.error('[posts] création échouée:', err.message);
+
+    // Jamais de 201 en cas d'échec : le comportement précédent confirmait la
+    // publication alors que rien n'avait été écrit, donc l'utilisateur croyait
+    // son wanda posté — il avait disparu.
+    return res.status(503).json({
+      error: 'Publication impossible pour le moment. Réessaie dans un instant.'
+    });
   }
 });
 
 module.exports = router;
+module.exports.computeHotScore = computeHotScore;
+module.exports.MAX_TEXTE_LENGTH = MAX_TEXTE_LENGTH;
+module.exports.validateTexte = validateTexte;
+module.exports.buildFeedQuery = buildFeedQuery;
+module.exports.fetchFeedPosts = fetchFeedPosts;

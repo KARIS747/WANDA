@@ -8,8 +8,15 @@
   <!-- PWA Meta -->
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#141210">
+  <meta name="description" content="Tu n'es pas seul à galérer. Un clic, un compteur, un mur solidaire. WANDA, l'exutoire collectif camerounais.">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="WANDA">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <!-- iOS ignore le manifest pour l'icône de l'écran d'accueil : sans ce lien,
+       l'app s'installe sans icône. -->
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="icon" type="image/svg+xml" href="/icons/icon-192.svg">
 
   <!-- Polices : Space Grotesk (Brutaliste/Urbain) + Plus Jakarta Sans (Corps lisible) -->
@@ -59,6 +66,13 @@
           </div>
           
           <p class="counter-label">personnes ont wanda aujourd'hui</p>
+
+          <!-- Affiché uniquement quand l'API sert des données de démonstration.
+               Un compteur fictif doit être visible comme tel, jamais présenté
+               comme un vrai chiffre. -->
+          <p id="counter-status-banner" class="counter-status-banner" hidden>
+            Mode démonstration — chiffres fictifs, rien n'est enregistré.
+          </p>
         </div>
 
         <!-- GROS BOUTON TACTILE PHYSIQUE -->
@@ -113,6 +127,23 @@
           </div>
         </div>
         
+        <!-- Onglets de tri : le JavaScript et les styles existaient déjà, mais -->
+        <!-- aucun bouton ne les utilisait, donc le fil restait figé en « hot ». -->
+        <nav class="sort-tabs" aria-label="Tri des wandas">
+          <button type="button" class="sort-tab active" data-sort="hot" aria-pressed="true">
+            <span class="sort-tab-icon" aria-hidden="true">🔥</span>
+            <span class="sort-tab-label">Hot</span>
+          </button>
+          <button type="button" class="sort-tab" data-sort="recent" aria-pressed="false">
+            <span class="sort-tab-icon" aria-hidden="true">🕒</span>
+            <span class="sort-tab-label">Récents</span>
+          </button>
+          <button type="button" class="sort-tab" data-sort="top" aria-pressed="false">
+            <span class="sort-tab-icon" aria-hidden="true">🏆</span>
+            <span class="sort-tab-label">Top</span>
+          </button>
+        </nav>
+
         <!-- Barre de filtres par catégories -->
         <nav class="categories-bar" aria-label="Filtres catégories">
           <button class="cat-pill active" data-category="Tous">Tous</button>
@@ -230,9 +261,9 @@
             <!-- Thème 1 : Charbon 237 -->
             <button class="theme-card active" data-theme="charbon">
               <div class="theme-swatch">
-                <span class="swatch-color" style="background: #141210;"></span>
-                <span class="swatch-color" style="background: #E63946;"></span>
-                <span class="swatch-color" style="background: #FFB703;"></span>
+                <span class="swatch-color sw-141210"></span>
+                <span class="swatch-color sw-e63946"></span>
+                <span class="swatch-color sw-ffb703"></span>
               </div>
               <span class="theme-name">Charbon 237</span>
               <span class="theme-desc">L'original urbain</span>
@@ -241,9 +272,9 @@
             <!-- Thème 2 : Terre de Foumban -->
             <button class="theme-card" data-theme="foumban">
               <div class="theme-swatch">
-                <span class="swatch-color" style="background: #18110D;"></span>
-                <span class="swatch-color" style="background: #E0533C;"></span>
-                <span class="swatch-color" style="background: #F4A261;"></span>
+                <span class="swatch-color sw-18110d"></span>
+                <span class="swatch-color sw-e0533c"></span>
+                <span class="swatch-color sw-f4a261"></span>
               </div>
               <span class="theme-name">Foumban</span>
               <span class="theme-desc">Terre cuite & ocre</span>
@@ -252,9 +283,9 @@
             <!-- Thème 3 : Nuit de Kribi -->
             <button class="theme-card" data-theme="kribi">
               <div class="theme-swatch">
-                <span class="swatch-color" style="background: #0B131F;"></span>
-                <span class="swatch-color" style="background: #00B4D8;"></span>
-                <span class="swatch-color" style="background: #F4D06F;"></span>
+                <span class="swatch-color sw-0b131f"></span>
+                <span class="swatch-color sw-00b4d8"></span>
+                <span class="swatch-color sw-f4d06f"></span>
               </div>
               <span class="theme-name">Nuit de Kribi</span>
               <span class="theme-desc">Bleu océan profond</span>
@@ -263,9 +294,9 @@
             <!-- Thème 4 : Forêt Équatoriale -->
             <button class="theme-card" data-theme="equateur">
               <div class="theme-swatch">
-                <span class="swatch-color" style="background: #0C1610;"></span>
-                <span class="swatch-color" style="background: #2A9D8F;"></span>
-                <span class="swatch-color" style="background: #E9C46A;"></span>
+                <span class="swatch-color sw-0c1610"></span>
+                <span class="swatch-color sw-2a9d8f"></span>
+                <span class="swatch-color sw-e9c46a"></span>
               </div>
               <span class="theme-name">Équateur</span>
               <span class="theme-desc">Canopée & émeraude</span>
@@ -274,9 +305,9 @@
             <!-- Thème 5 : Sable du Sahel -->
             <button class="theme-card" data-theme="sahel">
               <div class="theme-swatch">
-                <span class="swatch-color" style="background: #F4EFEB; border: 1px solid #CCC;"></span>
-                <span class="swatch-color" style="background: #D9483B;"></span>
-                <span class="swatch-color" style="background: #C97A24;"></span>
+                <span class="swatch-color sw-f4efeb swatch-bordered"></span>
+                <span class="swatch-color sw-d9483b"></span>
+                <span class="swatch-color sw-c97a24"></span>
               </div>
               <span class="theme-name">Sable Sahel</span>
               <span class="theme-desc">Chaleur claire & lin</span>
@@ -285,9 +316,9 @@
             <!-- Thème 6 : Classique Sombre -->
             <button class="theme-card" data-theme="dark_classic">
               <div class="theme-swatch">
-                <span class="swatch-color" style="background: #111113;"></span>
-                <span class="swatch-color" style="background: #E63946;"></span>
-                <span class="swatch-color" style="background: #FFFFFF;"></span>
+                <span class="swatch-color sw-111113"></span>
+                <span class="swatch-color sw-e63946"></span>
+                <span class="swatch-color sw-ffffff"></span>
               </div>
               <span class="theme-name">Classique Sombre</span>
               <span class="theme-desc">Minimaliste & pur</span>
@@ -296,9 +327,9 @@
             <!-- Thème 7 : Classique Clair -->
             <button class="theme-card" data-theme="light_classic">
               <div class="theme-swatch">
-                <span class="swatch-color" style="background: #FFFFFF; border: 1px solid #DDD;"></span>
-                <span class="swatch-color" style="background: #E63946;"></span>
-                <span class="swatch-color" style="background: #0F172A;"></span>
+                <span class="swatch-color sw-ffffff swatch-bordered"></span>
+                <span class="swatch-color sw-e63946"></span>
+                <span class="swatch-color sw-0f172a"></span>
               </div>
               <span class="theme-name">Classique Clair</span>
               <span class="theme-desc">Blanc pur & épuré</span>

@@ -1,5 +1,19 @@
 node_modules/
 .env
-github.md
+.env.local
 .DS_Store
 *.log
+coverage/
+
+# Base SQLite locale : jamais versionnée.
+# Le fichier -wal contient des écritures non encore fusionnées et le -shm
+# l'index associé ; laisser ces fichiers suivre dans git produit des
+# incohérences (une copie tronquée, un index périmé) sans aucune utilité.
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite
+*.db
+*.db-wal
+*.db-shm
+data/

@@ -447,6 +447,88 @@ body {
 }
 
 /* Barre de filtres catégories */
+/* =============================
+   ONGLETS DE TRI (Hot / Récents / Top)
+============================= */
+.sort-tabs {
+  display: flex;
+  gap: 4px;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  margin-bottom: 10px;
+}
+
+.sort-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.sort-tab:hover {
+  color: var(--text-main);
+  background-color: var(--bg-surface);
+}
+
+.sort-tab.active {
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border-focus);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.sort-tab[data-sort="hot"].active .sort-tab-icon {
+  filter: drop-shadow(0 0 6px #FF6B35);
+}
+
+.sort-tab[data-sort="top"].active .sort-tab-icon {
+  filter: drop-shadow(0 0 6px var(--color-amber-gold));
+}
+
+.sort-tab-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.sort-tab-label {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+/* Badge "Nouveau" qui apparaît sur l'onglet Récents quand du contenu frais arrive */
+.sort-tab[data-sort="recent"] .new-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-wanda-red);
+  color: white;
+  font-size: 9px;
+  font-weight: 800;
+  border-radius: var(--radius-pill);
+  padding: 1px 5px;
+  min-width: 16px;
+  animation: badge-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes badge-pop {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
 .categories-bar {
   display: flex;
   gap: 8px;
@@ -454,6 +536,7 @@ body {
   padding-bottom: 6px;
   scrollbar-width: none;
 }
+
 
 .categories-bar::-webkit-scrollbar {
   display: none;
@@ -547,6 +630,15 @@ body {
 
 .btn-report:hover {
   color: var(--color-wanda-red);
+}
+
+.btn-report.reported {
+  color: var(--color-wanda-red);
+  cursor: default;
+}
+
+.btn-report.reported svg {
+  fill: currentColor;
 }
 
 .post-text {
@@ -819,6 +911,13 @@ body {
   box-shadow: 0 0px 0px var(--color-wanda-dark);
 }
 
+.btn-primary-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .btn-skip-action {
   background: transparent;
   border: none;
@@ -1065,11 +1164,80 @@ body {
   margin-bottom: 8px;
 }
 
+/* Bandeau d'état du compteur. Affiché quand le compteur est réellement
+   indisponible, pour qu'une valeur absente ne soit pas lue comme un vrai
+   décompte à zéro. */
+.counter-status-banner {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 183, 3, 0.12);
+  border: 1px solid rgba(255, 183, 3, 0.35);
+  color: var(--color-sun-amber, #FFB703);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.counter-status-banner[hidden] {
+  display: none;
+}
+
+/* État vide du mur. Ce contenu est généré en JS, il portait donc des styles
+   inline ; on le garde ici pour rester compatible avec la CSP. */
+.empty-state {
+  text-align: center;
+  color: var(--text-sub);
+  padding: 40px 0;
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+.empty-state .empty-hint {
+  font-size: 13px;
+  margin-top: 6px;
+}
+
 .swatch-color {
   width: 14px;
   height: 14px;
   border-radius: 50%;
   display: inline-block;
+}
+
+/*
+ * Couleurs des pastilles de thème.
+ *
+ * Ces couleurs vivaient dans des attributs style="" en dur dans index.html. Deux
+ * raisons de les avoir sorties ici : la Content-Security-Policy peut refuser
+ * 'unsafe-inline', et des couleurs d'interface n'ont pas leur place dans le
+ * balisage — c'est le rôle de la feuille de style.
+ */
+.sw-141210 { background: #141210; }
+.sw-e63946 { background: #E63946; }
+.sw-ffb703 { background: #FFB703; }
+.sw-18110d { background: #18110D; }
+.sw-e0533c { background: #E0533C; }
+.sw-f4a261 { background: #F4A261; }
+.sw-0b131f { background: #0B131F; }
+.sw-00b4d8 { background: #00B4D8; }
+.sw-f4d06f { background: #F4D06F; }
+.sw-0c1610 { background: #0C1610; }
+.sw-2a9d8f { background: #2A9D8F; }
+.sw-e9c46a { background: #E9C46A; }
+.sw-f4efeb { background: #F4EFEB; }
+.sw-d9483b { background: #D9483B; }
+.sw-c97a24 { background: #C97A24; }
+.sw-111113 { background: #111113; }
+.sw-ffffff { background: #FFFFFF; }
+.sw-0f172a { background: #0F172A; }
+
+/* Sur les thèmes clairs, une pastille blanche disparaît : on lui trace un
+   contour pour qu'elle reste lisible sur la carte de thème. */
+.swatch-bordered {
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
 }
 
 .theme-name {
