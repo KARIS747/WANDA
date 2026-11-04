@@ -14,7 +14,7 @@
  *     change et qu'une donnée périmée est pire qu'une attente.
  */
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `wanda-${CACHE_VERSION}`;
 
 const SHELL_ASSETS = [

@@ -1,14 +1,14 @@
 {
-  "name": "WANDA — Exutoire Collectif",
+  "name": "WANDA — Le compteur des galères vraies",
   "short_name": "WANDA",
-  "description": "Tu n'es pas seul à galérer. Un clic, un compteur, un mur solidaire.",
+  "description": "Au Cameroun, on encaisse. Ici, on dit. Le compteur anonyme des galères vraies.",
   "lang": "fr",
   "dir": "ltr",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#141210",
-  "theme_color": "#141210",
+  "background_color": "#F5EFE3",
+  "theme_color": "#F5EFE3",
   "orientation": "portrait-primary",
   "categories": ["social", "entertainment", "news"],
   "icons": [

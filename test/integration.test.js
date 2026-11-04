@@ -705,8 +705,8 @@ describe('requête du fil', () => {
     // PostgreSQL (alias de sortie utilisé dans une expression) est accepté par
     // SQLite, donc seule l\'exécution sur les deux moteurs le révèle.
     await reset();
-    const animé = await seedPost({ texte: 'anime', reactions: 4, ageHours: 1 });
-    const muet = await seedPost({ texte: 'muet', reactions: 0, ageHours: 1 });
+    const animé = await seedPost({ texte: 'anime', reactions: 4, ageHours: 0 });
+    const muet = await seedPost({ texte: 'muet', reactions: 0, ageHours: 0 });
 
     for (const sort of ['hot', 'recent', 'top']) {
       const rows = ids(await feed({ sort }));
@@ -747,8 +747,8 @@ describe('requête du fil', () => {
 
   dbTest('le tri top est le plus réactif', async () => {
     await reset();
-    const peu = await seedPost({ texte: 'peu', reactions: 1, ageHours: 1 });
-    const beaucoup = await seedPost({ texte: 'beaucoup', reactions: 5, ageHours: 1 });
+    const peu = await seedPost({ texte: 'peu', reactions: 1, ageHours: 0 });
+    const beaucoup = await seedPost({ texte: 'beaucoup', reactions: 5, ageHours: 0 });
 
     const liste = ids(await feed({ sort: 'top' }));
 
@@ -773,8 +773,8 @@ describe('requête du fil', () => {
 
   dbTest('les posts masqués n\'apparaissent jamais sur le fil', async () => {
     await reset();
-    const actif = await seedPost({ texte: 'visible', reactions: 3, ageHours: 1 });
-    await seedPost({ texte: 'censure', reactions: 5, ageHours: 1 });
+    const actif = await seedPost({ texte: 'visible', reactions: 3, ageHours: 0 });
+    await seedPost({ texte: 'censure', reactions: 5, ageHours: 0 });
     await query(`UPDATE posts SET status = 'hidden' WHERE texte = 'censure'`);
 
     for (const sort of ['hot', 'recent', 'top']) {
