@@ -144,6 +144,24 @@
           </button>
         </nav>
 
+        <!-- Barre de recherche -->
+        <div class="wall-search-wrap">
+          <div class="wall-search">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input id="wall-search-input" type="search" placeholder="Rechercher un hashtag ou un mot..." autocomplete="off">
+            <button id="wall-search-clear" class="btn-icon-ghost" aria-label="Effacer la recherche" style="display:none">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          <div id="wall-search-suggestions" class="wall-search-suggestions" style="display:none"></div>
+        </div>
+
         <!-- Barre de filtres par catégories -->
         <nav class="categories-bar" aria-label="Filtres catégories">
           <button class="cat-pill active" data-category="Tous">Tous</button>
@@ -204,18 +222,14 @@
         </div>
 
         <div class="form-categories-section">
-          <label class="form-label">Choisis tes hashtags :</label>
-          <div id="form-cat-selectors" class="form-cat-pills">
-            <button type="button" class="form-cat-tag" data-tag="#NEPA">#NEPA</button>
-            <button type="button" class="form-cat-tag" data-tag="#Embouteillage">#Embouteillage</button>
-            <button type="button" class="form-cat-tag" data-tag="#Prix">#Prix</button>
-            <button type="button" class="form-cat-tag" data-tag="#UY1">#UY1</button>
-            <button type="button" class="form-cat-tag" data-tag="#Benskin">#Benskin</button>
-            <button type="button" class="form-cat-tag" data-tag="#Diaspora">#Diaspora</button>
-            <button type="button" class="form-cat-tag" data-tag="#Ghosting">#Ghosting</button>
-            <button type="button" class="form-cat-tag" data-tag="#Administration">#Administration</button>
-            <button type="button" class="form-cat-tag" data-tag="#Humour">#Humour</button>
+          <label class="form-label" for="form-tag-input">Hashtags (libres, max 5) :</label>
+          <div class="tag-input-wrap">
+            <input id="form-tag-input" type="text" class="tag-input" placeholder="Ex: match-cameroun ou Lions Indomptables" autocomplete="off">
+            <button type="button" id="form-tag-add" class="tag-add-btn">Ajouter</button>
           </div>
+          <div id="form-tag-suggestions" class="tag-suggestions" style="display:none"></div>
+          <div id="form-tags-list" class="form-tags-list"></div>
+          <small class="form-hint">Tu peux aussi écrire #hashtags directement dans ton texte.</small>
         </div>
 
         <div class="form-actions">

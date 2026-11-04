@@ -139,6 +139,38 @@ const MIGRATIONS = [
         window_start {{TS_NN}}
       );
     `
+  },
+  {
+    name: '006_tags',
+    sql: `
+      CREATE TABLE IF NOT EXISTS tags (
+        id {{PK}},
+        slug {{TXT}} NOT NULL UNIQUE,
+        display {{TXT}} NOT NULL,
+        usage_count {{INT}} DEFAULT 0,
+        created_at {{TS_NN}}
+      );
+
+      CREATE TABLE IF NOT EXISTS post_tags (
+        post_id {{INT}} NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        tag_id {{INT}} NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        created_at {{TS_NN}},
+        PRIMARY KEY (post_id, tag_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS tag_aliases (
+        id {{PK}},
+        alias {{TXT}} NOT NULL UNIQUE,
+        tag_id {{INT}} NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        created_at {{TS_NN}}
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tags_slug ON tags(slug);
+      CREATE INDEX IF NOT EXISTS idx_tags_usage ON tags(usage_count DESC);
+      CREATE INDEX IF NOT EXISTS idx_post_tags_tag ON post_tags(tag_id);
+      CREATE INDEX IF NOT EXISTS idx_post_tags_post ON post_tags(post_id);
+      CREATE INDEX IF NOT EXISTS idx_tag_aliases_tag ON tag_aliases(tag_id);
+    `
   }
 ];
 

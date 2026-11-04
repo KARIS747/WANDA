@@ -15,6 +15,7 @@ const {
 } = require('../sql');
 const { checkContentModeration } = require('../middleware/wordFilter');
 const { postRateLimiter } = require('../middleware/rateLimiter');
+const { normalizeTagSlug, normalizeTagDisplay, extractHashtagsFromText } = require('../utils/tags');
 
 // Garde-fou : la liste `seen` vient du client. Sans plafond, un appelant
 // pourrait envoyer des milliers d'IDs et faire exploser la requête SQL.
@@ -286,7 +287,7 @@ router.get('/', async (req, res) => {
  * Création d'une nouvelle publication anonyme
  */
 router.post('/', postRateLimiter, async (req, res) => {
-  const { texte, categories = [] } = req.body;
+  const { texte, categories = [], tags = [] } = req.body;
 
   const validation = validateTexte(texte);
   if (!validation.ok) {
@@ -299,12 +300,32 @@ router.post('/', postRateLimiter, async (req, res) => {
     return res.status(400).json({ error: moderation.reason });
   }
 
-  const cleanCategories = Array.isArray(categories)
-    ? categories
-        .slice(0, 3)
-        .filter((c) => typeof c === 'string' && c.trim().length > 0)
-        .map((c) => (c.startsWith('#') ? c : `#${c}`).trim())
+  // Extraire les hashtags depuis le texte (libres)
+  const extractedFromText = extractHashtagsFromText(cleanText);
+  
+  // Normaliser les tags fournis explicitement
+  const explicitTags = Array.isArray(tags)
+    ? tags
+        .map((t) => {
+          const slug = normalizeTagSlug(t);
+          const display = normalizeTagDisplay(t);
+          if (!slug || !display) return null;
+          return { slug, display };
+        })
+        .filter(Boolean)
     : [];
+
+  // Fusionner (texte + explicites), éviter doublons, max 5
+  const tagMap = new Map();
+  for (const t of [...extractedFromText, ...explicitTags]) {
+    if (!tagMap.has(t.slug)) {
+      tagMap.set(t.slug, t);
+    }
+  }
+  const allTags = Array.from(tagMap.values()).slice(0, 5);
+
+  // Pour compatibilité avec l'existant (catégories)
+  const cleanCategories = allTags.map((t) => `#${t.display}`);
 
   try {
     // `created_at` est fourni explicitement : SQLite ne ferait qu'une précision à
@@ -319,10 +340,49 @@ router.post('/', postRateLimiter, async (req, res) => {
     );
 
     const post = result.rows[0];
+    const postId = post.id;
+
+    // Associer les tags
+    for (const tag of allTags) {
+      try {
+        // Upsert tag
+        let tagResult = await query(
+          `SELECT id FROM tags WHERE slug = $1`,
+          [tag.slug]
+        );
+        let tagId;
+        if (tagResult.rows.length === 0) {
+          const insertTag = await query(
+            `INSERT INTO tags (slug, display, usage_count, created_at)
+             VALUES ($1, $2, 0, $3)
+             RETURNING id`,
+            [tag.slug, tag.display, nowIso()]
+          );
+          tagId = insertTag.rows[0].id;
+        } else {
+          tagId = tagResult.rows[0].id;
+        }
+        // Lier post_tag
+        await query(
+          `INSERT INTO post_tags (post_id, tag_id, created_at)
+           VALUES ($1, $2, $3)
+           ON CONFLICT DO NOTHING`,
+          [postId, tagId, nowIso()]
+        );
+        // Incrémenter usage_count
+        await query(
+          `UPDATE tags SET usage_count = usage_count + 1 WHERE id = $1`,
+          [tagId]
+        );
+      } catch (tagErr) {
+        console.error('[posts] erreur tag:', tagErr.message);
+      }
+    }
 
     return res.status(201).json({
       ...post,
       categories: parseJsonColumn(post.categories, cleanCategories),
+      tags: allTags,
       created_at: toIso(post.created_at),
       total_reactions: 0,
       reactions: { wanda: 0, courage: 0, mdr: 0, priere: 0, chaud: 0 }
@@ -336,6 +396,127 @@ router.post('/', postRateLimiter, async (req, res) => {
     return res.status(503).json({
       error: 'Publication impossible pour le moment. Réessaie dans un instant.'
     });
+  }
+});
+
+/**
+ * GET /api/posts/tags/suggest
+ * Suggestions de tags pour autocomplétion
+ */
+router.get('/tags/suggest', async (req, res) => {
+  const q = (req.query.q || '').toString().trim();
+  if (!q) {
+    return res.json([]);
+  }
+  const slug = require('../utils/tags').normalizeTagSlug(q);
+  if (!slug) {
+    return res.json([]);
+  }
+  try {
+    const { rows } = await query(
+      `SELECT slug, display, usage_count 
+       FROM tags 
+       WHERE slug LIKE $1 OR display LIKE $2
+       ORDER BY usage_count DESC, slug ASC
+       LIMIT $3`,
+      [`${slug}%`, `%${q.toLowerCase()}%`, Math.min(parseInt(req.query.limit, 10) || 8, 20)]
+    );
+    return res.json(rows);
+  } catch (err) {
+    console.error('[tags] suggest échoué:', err.message);
+    return res.json([]);
+  }
+});
+
+/**
+ * GET /api/posts/search
+ * Recherche par tag ou texte
+ */
+router.get('/search', async (req, res) => {
+  const q = (req.query.q || '').toString().trim();
+  if (!q || q.length < 2) {
+    return res.json({ tags: [], posts: [] });
+  }
+  try {
+    const { normalizeTagSlug } = require('../utils/tags');
+    const slug = normalizeTagSlug(q);
+    
+    // Chercher tags correspondants
+    let tagRows = [];
+    if (slug) {
+      const { rows } = await query(
+        `SELECT slug, display, usage_count 
+         FROM tags 
+         WHERE slug LIKE $1 OR slug = $2
+         ORDER BY usage_count DESC
+         LIMIT 10`,
+        [`${slug}%`, slug]
+      );
+      tagRows = rows;
+    }
+    
+    // Chercher posts par tag ou texte
+    let postRows = [];
+    if (slug || q) {
+      // D'abord par tag si slug correspond à un tag existant
+      if (slug) {
+        const { rows } = await query(
+          `SELECT DISTINCT p.id, p.texte, p.categories, p.created_at, p.status, p.report_count
+           FROM posts p
+           JOIN post_tags pt ON pt.post_id = p.id
+           JOIN tags t ON t.id = pt.tag_id
+           WHERE p.status = 'active' AND t.slug LIKE $1
+           ORDER BY p.created_at DESC
+           LIMIT 50`,
+          [`${slug}%`]
+        );
+        postRows = rows;
+      }
+      // Si pas assez de résultats, chercher dans le texte
+      if (postRows.length < 10) {
+        const { rows } = await query(
+          `SELECT id, texte, categories, created_at, status, report_count
+           FROM posts
+           WHERE status = 'active' AND LOWER(texte) LIKE $1
+           ORDER BY created_at DESC
+           LIMIT 50`,
+          [`%${q.toLowerCase()}%`]
+        );
+        // Éviter doublons
+        const existingIds = new Set(postRows.map(r => r.id));
+        for (const r of rows) {
+          if (!existingIds.has(r.id)) {
+            postRows.push(r);
+          }
+        }
+        postRows = postRows.slice(0, 50);
+      }
+    }
+    
+    const formatted = postRows.map((post) => {
+      const rawReactions = parseJsonColumn(post.reactions, {});
+      return {
+        id: post.id,
+        texte: post.texte,
+        categories: parseJsonColumn(post.categories, []),
+        created_at: toIso(post.created_at),
+        status: post.status,
+        report_count: post.report_count,
+        total_reactions: parseInt(post.total_reactions || 0, 10),
+        reactions: {
+          wanda: parseInt(rawReactions?.wanda || 0, 10),
+          courage: parseInt(rawReactions?.courage || 0, 10),
+          mdr: parseInt(rawReactions?.mdr || 0, 10),
+          priere: parseInt(rawReactions?.priere || 0, 10),
+          chaud: parseInt(rawReactions?.chaud || 0, 10)
+        }
+      };
+    });
+    
+    return res.json({ tags: tagRows, posts: formatted });
+  } catch (err) {
+    console.error('[search] échoué:', err.message);
+    return res.json({ tags: [], posts: [] });
   }
 });
 

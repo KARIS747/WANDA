@@ -19,7 +19,7 @@ if (!clientToken) {
   localStorage.setItem('wanda_client_token', clientToken);
 }
 
-// État de l'application
+  // État de l'application
 const state = {
   activeTab: 'counter', // 'counter' | 'wall'
   counterValue: 0,
@@ -29,13 +29,15 @@ const state = {
     JSON.parse(localStorage.getItem('wanda_seen_posts') || '[]')
   ),
   drawerCategories: new Set(),
+  drawerTags: [],
   posts: [],
   userReactions: JSON.parse(localStorage.getItem('wanda_reactions') || '{}'),
   userReports: JSON.parse(localStorage.getItem('wanda_reports') || '{}'),
   theme: localStorage.getItem('wanda_theme') || 'charbon',
   emojiAnim: localStorage.getItem('wanda_emoji_anim') || 'explosion',
   soundEnabled: localStorage.getItem('wanda_sound_enabled') !== 'false',
-  hapticEnabled: localStorage.getItem('wanda_haptic_enabled') !== 'false'
+  hapticEnabled: localStorage.getItem('wanda_haptic_enabled') !== 'false',
+  wallSearchQuery: ''
 };
 
 // ==========================================
@@ -314,7 +316,13 @@ const postText = document.getElementById('post-text');
 const charCount = document.getElementById('char-count');
 const btnSubmitWanda = document.getElementById('btn-submit-wanda');
 const MAX_POST_LENGTH = Number(postText.getAttribute('maxlength')) || 140;
-const formCatTags = document.querySelectorAll('.form-cat-tag');
+const formTagInput = document.getElementById('form-tag-input');
+const formTagAdd = document.getElementById('form-tag-add');
+const formTagSuggestions = document.getElementById('form-tag-suggestions');
+const formTagsList = document.getElementById('form-tags-list');
+const wallSearchInput = document.getElementById('wall-search-input');
+const wallSearchClear = document.getElementById('wall-search-clear');
+const wallSearchSuggestions = document.getElementById('wall-search-suggestions');
 
 /**
  * Formate un rang en français : 1re, 2e, 3e…
@@ -338,12 +346,72 @@ function openDrawer(rank = null) {
   setTimeout(() => postText.focus(), 300);
 }
 
+function normalizeTagSlugUI(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  let s = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/^#+/, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (s.length === 0 || s.length > 30) return null;
+  return s;
+}
+
+function normalizeTagDisplayUI(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  let s = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/^#+/, '').replace(/\s+/g, ' ');
+  if (s.length === 0 || s.length > 30) return null;
+  return s;
+}
+
+function renderFormTags() {
+  if (!formTagsList) return;
+  formTagsList.innerHTML = '';
+  state.drawerTags.forEach((tag, idx) => {
+    const chip = document.createElement('span');
+    chip.className = 'form-tag-chip';
+    chip.innerHTML = `#${tag.display} <button type="button" aria-label="Retirer">×</button>`;
+    chip.querySelector('button').addEventListener('click', () => {
+      state.drawerTags.splice(idx, 1);
+      renderFormTags();
+    });
+    formTagsList.appendChild(chip);
+  });
+}
+
+function addFormTag(raw) {
+  if (state.drawerTags.length >= 5) {
+    showToast('Maximum 5 hashtags par publication', 'error');
+    return;
+  }
+  const slug = normalizeTagSlugUI(raw);
+  const display = normalizeTagDisplayUI(raw);
+  if (!slug || !display) {
+    showToast('Hashtag invalide', 'error');
+    return;
+  }
+  if (state.drawerTags.some(t => t.slug === slug)) {
+    showToast('Hashtag déjà ajouté', 'error');
+    return;
+  }
+  state.drawerTags.push({ slug, display });
+  renderFormTags();
+  if (formTagInput) formTagInput.value = '';
+  if (formTagSuggestions) formTagSuggestions.style.display = 'none';
+}
+
 function closeDrawer() {
   drawerBackdrop.classList.remove('active');
   postDrawer.classList.remove('active');
   wandaForm.reset();
   state.drawerCategories.clear();
-  formCatTags.forEach(t => t.classList.remove('selected'));
+  state.drawerTags = [];
+  if (formTagsList) formTagsList.innerHTML = '';
+  if (formTagInput) formTagInput.value = '';
+  if (formTagSuggestions) formTagSuggestions.style.display = 'none';
   charCount.textContent = '140';
 }
 
@@ -370,23 +438,54 @@ function updateCharCount() {
 postText.addEventListener('input', updateCharCount);
 updateCharCount();
 
-// Sélection des hashtags
-formCatTags.forEach(btn => {
-  btn.addEventListener('click', () => {
-    const tag = btn.getAttribute('data-tag');
-    if (state.drawerCategories.has(tag)) {
-      state.drawerCategories.delete(tag);
-      btn.classList.remove('selected');
-    } else {
-      if (state.drawerCategories.size >= 3) {
-        showToast("Maximum 3 catégories par publication", "error");
-        return;
-      }
-      state.drawerCategories.add(tag);
-      btn.classList.add('selected');
+if (formTagAdd) {
+  formTagAdd.addEventListener('click', () => {
+    if (formTagInput) addFormTag(formTagInput.value);
+  });
+}
+if (formTagInput) {
+  formTagInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addFormTag(formTagInput.value);
     }
   });
-});
+  let tagSuggestTimer;
+  formTagInput.addEventListener('input', () => {
+    clearTimeout(tagSuggestTimer);
+    const val = formTagInput.value.trim();
+    if (!val || !formTagSuggestions) {
+      formTagSuggestions.style.display = 'none';
+      formTagSuggestions.innerHTML = '';
+      return;
+    }
+    tagSuggestTimer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/posts/tags/suggest?q=${encodeURIComponent(val)}&limit=8`);
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) {
+          formTagSuggestions.style.display = 'none';
+          formTagSuggestions.innerHTML = '';
+          return;
+        }
+        formTagSuggestions.innerHTML = '';
+        data.forEach(item => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'tag-suggest-item';
+          btn.textContent = `#${item.display || item.slug}`;
+          btn.addEventListener('click', () => {
+            addFormTag(item.display || item.slug);
+          });
+          formTagSuggestions.appendChild(btn);
+        });
+        formTagSuggestions.style.display = 'flex';
+      } catch (e) {
+        formTagSuggestions.style.display = 'none';
+      }
+    }, 200);
+  });
+}
 
 // Soumission du formulaire
 wandaForm.addEventListener('submit', async (e) => {
@@ -395,9 +494,13 @@ wandaForm.addEventListener('submit', async (e) => {
 
   if (!text) return;
 
+  const tagsToSend = state.drawerTags.map(t => t.display || t.slug);
+  const categoriesToSend = tagsToSend.map(t => `#${t}`);
+
   const payload = {
     texte: text,
-    categories: Array.from(state.drawerCategories),
+    categories: categoriesToSend,
+    tags: tagsToSend,
     clientToken: clientToken
   };
 
@@ -1194,3 +1297,94 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// Recherche sur le mur
+if (wallSearchInput) {
+  wallSearchInput.addEventListener('input', () => {
+    const val = wallSearchInput.value.trim();
+    if (wallSearchClear) wallSearchClear.style.display = val ? 'flex' : 'none';
+    state.wallSearchQuery = val;
+    if (val.length >= 2) {
+      performWallSearch(val);
+    } else {
+      if (wallSearchSuggestions) {
+        wallSearchSuggestions.style.display = 'none';
+        wallSearchSuggestions.innerHTML = '';
+      }
+      loadPosts(false);
+    }
+  });
+}
+if (wallSearchClear) {
+  wallSearchClear.addEventListener('click', () => {
+    if (wallSearchInput) wallSearchInput.value = '';
+    wallSearchClear.style.display = 'none';
+    state.wallSearchQuery = '';
+    if (wallSearchSuggestions) {
+      wallSearchSuggestions.style.display = 'none';
+      wallSearchSuggestions.innerHTML = '';
+    }
+    loadPosts(false);
+  });
+}
+
+async function performWallSearch(q) {
+  try {
+    const res = await fetch(`${API_URL}/posts/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const postsStream = document.getElementById('posts-stream');
+    const wallLoading = document.getElementById('wall-loading');
+    if (wallLoading) wallLoading.style.display = 'none';
+    if (!postsStream) return;
+    postsStream.innerHTML = '';
+    if (wallSearchSuggestions) {
+      wallSearchSuggestions.innerHTML = '';
+      if (Array.isArray(data.tags) && data.tags.length > 0) {
+        data.tags.slice(0, 6).forEach(tag => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'wall-suggest-tag';
+          btn.textContent = `#${tag.display || tag.slug} (${tag.usage_count || 0})`;
+          btn.addEventListener('click', () => {
+            if (wallSearchInput) wallSearchInput.value = tag.display || tag.slug;
+            state.wallSearchQuery = tag.display || tag.slug;
+            if (wallSearchClear) wallSearchClear.style.display = 'flex';
+            performWallSearch(tag.display || tag.slug);
+            if (wallSearchSuggestions) {
+              wallSearchSuggestions.style.display = 'none';
+            }
+          });
+          wallSearchSuggestions.appendChild(btn);
+        });
+        wallSearchSuggestions.style.display = 'flex';
+      } else {
+        wallSearchSuggestions.style.display = 'none';
+      }
+    }
+    if (!Array.isArray(data.posts) || data.posts.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'wall-empty';
+      empty.innerHTML = '<p>Aucun résultat pour cette recherche.</p>';
+      postsStream.appendChild(empty);
+      return;
+    }
+    data.posts.forEach(post => {
+      if (typeof renderPost === 'function') {
+        renderPost(post);
+      } else {
+        // fallback minimal
+        const postEl = document.createElement('article');
+        postEl.className = 'post-card';
+        postEl.innerHTML = `<div class="post-text">${escapeHtml(post.texte)}</div>`;
+        postsStream.appendChild(postEl);
+      }
+    });
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
