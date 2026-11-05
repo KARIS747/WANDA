@@ -41,19 +41,18 @@ const state = {
   userReactions: JSON.parse(localStorage.getItem('wanda_reactions') || '{}'),
   userReports: JSON.parse(localStorage.getItem('wanda_reports') || '{}'),
   theme: localStorage.getItem('wanda_theme') || 'papier',
-  emojiAnim: localStorage.getItem('wanda_emoji_anim') === 'sobre' ? 'sobre' : 'explosion',
+  emojiAnim: localStorage.getItem('wanda_emoji_anim') || 'seisme',
   soundEnabled: localStorage.getItem('wanda_sound_enabled') !== 'false',
   hapticEnabled: localStorage.getItem('wanda_haptic_enabled') !== 'false',
   wallSearchQuery: ''
 };
 
-const SVG_ATTRS = 'viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
 const REACTION_DEFS = [
-  { type: 'wanda', label: 'Wanda', icon: `<svg ${SVG_ATTRS}><circle cx="12" cy="12" r="4"/><path d="M12 2.5v5M12 16.5v5M4.2 4.2l3.5 3.5M16.3 16.3l3.5 3.5M2.5 12h5M16.5 12h5M4.2 19.8l3.5-3.5M16.3 7.7l3.5-3.5"/></svg>` },
-  { type: 'courage', label: 'Courage', icon: `<svg ${SVG_ATTRS}><path d="M12 3l7 2.8v6.1c0 4.3-2.7 7.4-7 9.1-4.3-1.7-7-4.8-7-9.1V5.8L12 3Z"/><path d="M9.5 12l1.7 1.7 3.6-4"/></svg>` },
-  { type: 'mdr', label: 'MDR', icon: `<svg ${SVG_ATTRS}><circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M8.5 14c1 1.6 2.2 2.4 3.5 2.4s2.5-.8 3.5-2.4"/></svg>` },
-  { type: 'priere', label: 'Prière', icon: `<svg ${SVG_ATTRS}><path d="M6 11h12v3.5a6 6 0 0 1-12 0V11Z"/><path d="M8.5 11V7.4M10.8 11V5.2M13.2 11V5.2M15.5 11V7.4"/></svg>` },
-  { type: 'chaud', label: 'Chaud', icon: `<svg ${SVG_ATTRS}><path d="M12 21c3.5 0 6-2.5 6-6 0-2.1-1.1-3.7-2.6-5.2-.6 1.9-1.5 3.1-2.9 3.9.2-3.1-1.3-6.5-4.5-9 0 3.6-3.2 5.7-3.2 9.9 0 3.6 2.2 6.4 7.2 6.4Z"/></svg>` }
+  { type: 'wanda', emoji: '🤯', label: 'Wanda' },
+  { type: 'courage', emoji: '💪', label: 'Courage' },
+  { type: 'mdr', emoji: '😂', label: 'MDR' },
+  { type: 'priere', emoji: '🙏', label: 'Prière' },
+  { type: 'chaud', emoji: '🔥', label: 'Chaud' }
 ];
 
 // ==========================================
@@ -98,8 +97,8 @@ function playTactileClick() {
   }
 }
 
-// Réponse sonore des réactions
-function playEmojiPop(mode = 'impact') {
+// Son Dopamine pour les réactions emojis (multi-modes synthétisés)
+function playEmojiPop(mode = 'explosion') {
   if (!state.soundEnabled) return;
   try {
     const ctx = getAudioContext();
@@ -108,15 +107,64 @@ function playEmojiPop(mode = 'impact') {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
-    osc.type = mode === 'calme' ? 'sine' : 'triangle';
-    osc.frequency.setValueAtTime(mode === 'calme' ? 620 : 210, now);
-    osc.frequency.exponentialRampToValueAtTime(mode === 'calme' ? 880 : 84, now + (mode === 'calme' ? 0.09 : 0.18));
-    gain.gain.setValueAtTime(mode === 'calme' ? 0.12 : 0.34, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + (mode === 'calme' ? 0.11 : 0.19));
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(now + (mode === 'calme' ? 0.12 : 0.2));
+    if (mode === 'seisme' || mode === 'trou_noir') {
+      // Sub-bass rumble boom
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(160, now);
+      osc.frequency.exponentialRampToValueAtTime(32, now + 0.35);
+      gain.gain.setValueAtTime(0.6, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(now + 0.36);
+    } else if (mode === 'supernova') {
+      // Laser rise then boom
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(180, now);
+      osc.frequency.linearRampToValueAtTime(700, now + 0.1);
+      osc.frequency.exponentialRampToValueAtTime(45, now + 0.4);
+      gain.gain.setValueAtTime(0.55, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(now + 0.41);
+    } else if (mode === 'foudre') {
+      // Électrique crack / thunder
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(500, now);
+      osc.frequency.exponentialRampToValueAtTime(60, now + 0.25);
+      gain.gain.setValueAtTime(0.55, now);
+      gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(now + 0.26);
+    } else if (mode === 'punch') {
+      // Punch impact
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(180, now);
+      osc.frequency.exponentialRampToValueAtTime(45, now + 0.15);
+      gain.gain.setValueAtTime(0.5, now);
+      gain.gain.linearRampToValueAtTime(0.01, now + 0.16);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(now + 0.17);
+    } else {
+      // Carillon / pop cristallin classique
+      osc.type = 'sine';
+      const baseFreq = 420 + Math.random() * 120;
+      osc.frequency.setValueAtTime(baseFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.6, now + 0.08);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(now + 0.16);
+    }
   } catch (e) {}
 }
 
@@ -219,7 +267,6 @@ async function handleWandaClick() {
 
   let rank = null;
   let failed = false;
-  let dejaCompte = false;
 
   try {
     const res = await fetch(`${API_URL}/counter/increment`, {
@@ -233,7 +280,6 @@ async function handleWandaClick() {
     if (res.ok) {
       const data = await res.json();
       rank = data.rank || null;
-      dejaCompte = data.alreadyCounted === true;
       // Le total fait autorité sur l'estimation optimiste.
       if (typeof data.total === 'number') {
         state.counterValue = data.total;
@@ -255,13 +301,6 @@ async function handleWandaClick() {
     }
     showToast("Compteur indisponible. Ton wanda n'a pas été compté.", 'error');
     return;
-  }
-
-  // Le compteur compte des personnes, pas des clics : re-cliquer dans la journée
-  // ne change rien. Sans ce message, l'utilisateur voit son incrément
-  // disparaître et pense à un bug.
-  if (dejaCompte) {
-    showToast("Tu as déjà compté aujourd'hui. Le compteur ne compte que les personnes.", 'info');
   }
 
   // Ouvrir le tiroir pour proposer d'écrire son Wanda
@@ -287,7 +326,10 @@ const formTagInput = document.getElementById('form-tag-input');
 const formTagAdd = document.getElementById('form-tag-add');
 const formTagSuggestions = document.getElementById('form-tag-suggestions');
 const formTagsList = document.getElementById('form-tags-list');
+const formTagsCounter = document.getElementById('form-tags-counter');
 const wallSearchInput = document.getElementById('wall-search-input');
+const wallSearchPanel = document.getElementById('wall-search-panel');
+const btnToggleSearch = document.getElementById('btn-toggle-search');
 const wallSearchClear = document.getElementById('wall-search-clear');
 const wallSearchSuggestions = document.getElementById('wall-search-suggestions');
 
@@ -337,6 +379,7 @@ function normalizeTagDisplayUI(raw) {
 function renderFormTags() {
   if (!formTagsList) return;
   formTagsList.innerHTML = '';
+  if (formTagsCounter) formTagsCounter.textContent = `${state.drawerTags.length}/5`;
   state.drawerTags.forEach((tag, idx) => {
     const chip = document.createElement('span');
     chip.className = 'form-tag-chip';
@@ -376,7 +419,7 @@ function closeDrawer() {
   wandaForm.reset();
   state.drawerCategories.clear();
   state.drawerTags = [];
-  if (formTagsList) formTagsList.innerHTML = '';
+  renderFormTags();
   if (formTagInput) formTagInput.value = '';
   setElementHidden(formTagSuggestions, true);
   charCount.textContent = '140';
@@ -719,7 +762,7 @@ function createPostCard(post) {
     .map(tag => `<span class="tag-badge">${escapeHtml(tag)}</span>`)
     .join('');
 
-  // Les réactions restent accessibles : icône + nom, jamais un seul emoji.
+  // Les réactions sont accessibles : emoji + libellé ARIA.
   const reactionsHtml = REACTION_DEFS.map(def => {
     const count = post.reactions?.[def.type] || 0;
     const isUserReacted = Boolean(state.userReactions[`${post.id}_${def.type}`]);
@@ -730,8 +773,7 @@ function createPostCard(post) {
               data-type="${def.type}"
               aria-pressed="${isUserReacted}"
               aria-label="${def.label}, ${count} réaction${count === 1 ? '' : 's'}">
-        <span class="reaction-icon" aria-hidden="true">${def.icon}</span>
-        <span class="reaction-label">${def.label}</span>
+        <span class="emoji" aria-hidden="true">${def.emoji}</span>
         <span class="count">${count}</span>
       </button>
     `;
@@ -796,44 +838,237 @@ function createPostCard(post) {
 }
 
 // ==========================================
-// RÉPONSE VISUELLE AUX RÉACTIONS
+// EFFETS PARTICULES (10 MODES DE DOPAMINE)
 // ==========================================
-function spawnReactionBurst(x, y, type) {
-  const mode = state.emojiAnim === 'explosion' ? 'impact' : 'calme';
+function spawnEmojiParticles(x, y, emoji) {
+  const mode = state.emojiAnim || 'seisme';
   playEmojiPop(mode);
 
-  if (mode === 'calme') {
-    triggerHaptic([12]);
+  const appLayout = document.querySelector('.app-layout');
+
+  // Mode 10 : Sobre (micro-pulsation sans particules)
+  if (mode === 'sobre') {
+    triggerHaptic([15]);
     return;
   }
 
-  triggerHaptic([18, 28]);
-  const appLayout = document.querySelector('.app-layout');
-  if (appLayout) {
-    appLayout.classList.remove('impact-hit');
-    void appLayout.offsetWidth;
-    appLayout.classList.add('impact-hit');
-    setTimeout(() => appLayout.classList.remove('impact-hit'), 280);
+  // Mode 1 : Méga-Choc / Onde de Choc
+  if (mode === 'seisme') {
+    triggerHaptic([40, 50, 40]);
+    if (appLayout) {
+      appLayout.classList.remove('screen-shake');
+      void appLayout.offsetWidth;
+      appLayout.classList.add('screen-shake');
+      setTimeout(() => appLayout.classList.remove('screen-shake'), 400);
+    }
+
+    const mega = document.createElement('div');
+    mega.className = 'particle-emoji particle-seisme';
+    mega.textContent = emoji;
+    document.body.appendChild(mega);
+    setTimeout(() => mega.remove(), 800);
+    return;
   }
 
-  const reaction = REACTION_DEFS.find(def => def.type === type) || REACTION_DEFS[0];
-  const burst = document.createElement('div');
-  burst.className = 'reaction-burst';
-  burst.innerHTML = `<span class="reaction-burst-mark" aria-hidden="true">${reaction.icon}</span><span class="reaction-burst-ring" aria-hidden="true"></span>`;
-  burst.style.left = `${x}px`;
-  burst.style.top = `${y}px`;
-  document.body.appendChild(burst);
-  setTimeout(() => burst.remove(), 680);
+  // Mode 2 : Supernova / Flash Cosmique
+  if (mode === 'supernova') {
+    triggerHaptic([20, 30, 80]);
+    if (appLayout) {
+      appLayout.classList.remove('screen-shake');
+      void appLayout.offsetWidth;
+      appLayout.classList.add('screen-shake');
+      setTimeout(() => appLayout.classList.remove('screen-shake'), 450);
+    }
+
+    // Anneau d'onde de choc dorée
+    const ring = document.createElement('div');
+    ring.className = 'shockwave-ring';
+    document.body.appendChild(ring);
+    setTimeout(() => ring.remove(), 800);
+
+    // Emoji Supernova géant
+    const nova = document.createElement('div');
+    nova.className = 'particle-emoji particle-supernova';
+    nova.textContent = emoji;
+    document.body.appendChild(nova);
+    setTimeout(() => nova.remove(), 900);
+
+    // Étincelles radiales
+    for (let i = 0; i < 12; i++) {
+      const spark = document.createElement('div');
+      spark.className = 'particle-emoji particle-explosion';
+      spark.textContent = '✨';
+      const angle = (Math.PI * 2 * i) / 12;
+      const dist = 90 + Math.random() * 80;
+      spark.style.left = `${window.innerWidth / 2}px`;
+      spark.style.top = `${window.innerHeight / 2}px`;
+      spark.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+      spark.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+      document.body.appendChild(spark);
+      setTimeout(() => spark.remove(), 850);
+    }
+    return;
+  }
+
+  // Mode 3 : Coup de Foudre / Impact Électrique
+  if (mode === 'foudre') {
+    triggerHaptic([15, 15, 60]);
+    if (appLayout) {
+      appLayout.classList.remove('flash-screen-lightning');
+      void appLayout.offsetWidth;
+      appLayout.classList.add('flash-screen-lightning');
+      setTimeout(() => appLayout.classList.remove('flash-screen-lightning'), 400);
+    }
+
+    const bolt = document.createElement('div');
+    bolt.className = 'particle-emoji particle-foudre';
+    bolt.textContent = emoji;
+    document.body.appendChild(bolt);
+    setTimeout(() => bolt.remove(), 750);
+
+    // Éclats électriques
+    for (let i = 0; i < 8; i++) {
+      const spark = document.createElement('div');
+      spark.className = 'particle-emoji particle-explosion';
+      spark.textContent = '⚡';
+      const angle = (Math.PI * 2 * i) / 8;
+      const dist = 70 + Math.random() * 90;
+      spark.style.left = `${window.innerWidth / 2}px`;
+      spark.style.top = `${window.innerHeight / 2}px`;
+      spark.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+      spark.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+      document.body.appendChild(spark);
+      setTimeout(() => spark.remove(), 750);
+    }
+    return;
+  }
+
+  // Mode 4 : Pluie de Météores / Déluge
+  if (mode === 'meteore') {
+    triggerHaptic([20, 20, 20, 40]);
+    if (appLayout) {
+      appLayout.classList.remove('screen-shake');
+      void appLayout.offsetWidth;
+      appLayout.classList.add('screen-shake');
+      setTimeout(() => appLayout.classList.remove('screen-shake'), 400);
+    }
+
+    const count = 18;
+    for (let i = 0; i < count; i++) {
+      setTimeout(() => {
+        const met = document.createElement('div');
+        met.className = 'particle-emoji particle-meteore';
+        met.textContent = emoji;
+        const startX = Math.random() * (window.innerWidth + 100) - 50;
+        const startY = -40;
+        const dx = 120 + Math.random() * 100;
+        const dy = window.innerHeight + 100;
+
+        met.style.left = `${startX}px`;
+        met.style.top = `${startY}px`;
+        met.style.setProperty('--dx', `${dx}px`);
+        met.style.setProperty('--dy', `${dy}px`);
+        document.body.appendChild(met);
+        setTimeout(() => met.remove(), 850);
+      }, i * 35);
+    }
+    return;
+  }
+
+  // Mode 5 : Trou Noir / Implosion-Blast
+  if (mode === 'trou_noir') {
+    triggerHaptic([25, 40, 70]);
+    if (appLayout) {
+      appLayout.classList.remove('screen-shake');
+      void appLayout.offsetWidth;
+      appLayout.classList.add('screen-shake');
+      setTimeout(() => appLayout.classList.remove('screen-shake'), 500);
+    }
+
+    const bh = document.createElement('div');
+    bh.className = 'particle-emoji particle-trou_noir';
+    bh.textContent = emoji;
+    document.body.appendChild(bh);
+    setTimeout(() => bh.remove(), 950);
+    return;
+  }
+
+  // Mode 6 : K.O. Punch / Impact Brutal
+  if (mode === 'punch') {
+    triggerHaptic([60]);
+    if (appLayout) {
+      appLayout.classList.remove('punch-zoom');
+      void appLayout.offsetWidth;
+      appLayout.classList.add('punch-zoom');
+      setTimeout(() => appLayout.classList.remove('punch-zoom'), 450);
+    }
+
+    const punch = document.createElement('div');
+    punch.className = 'particle-emoji particle-punch';
+    punch.textContent = emoji;
+    document.body.appendChild(punch);
+    setTimeout(() => punch.remove(), 700);
+
+    // Étoiles de choc cartoon
+    for (let i = 0; i < 6; i++) {
+      const star = document.createElement('div');
+      star.className = 'particle-emoji particle-explosion';
+      star.textContent = '💥';
+      const angle = (Math.PI * 2 * i) / 6;
+      const dist = 75 + Math.random() * 60;
+      star.style.left = `${window.innerWidth / 2}px`;
+      star.style.top = `${window.innerHeight / 2}px`;
+      star.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+      star.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+      document.body.appendChild(star);
+      setTimeout(() => star.remove(), 700);
+    }
+    return;
+  }
+
+  // Modes classiques : Particules multiples (Explosion 360, Geyser, Vortex)
+  triggerHaptic([15, 20]);
+  const count = mode === 'vortex' ? 8 : 10;
+  for (let i = 0; i < count; i++) {
+    const particle = document.createElement('div');
+    particle.className = `particle-emoji particle-${mode}`;
+    particle.textContent = emoji;
+
+    let dx, dy;
+    if (mode === 'geyser') {
+      dx = (Math.random() - 0.5) * 90;
+      dy = -(110 + Math.random() * 110);
+    } else if (mode === 'vortex') {
+      const angle = (Math.PI * 2 * i) / count;
+      const radius = 55 + Math.random() * 55;
+      dx = Math.cos(angle) * radius;
+      dy = Math.sin(angle) * radius - 20;
+    } else {
+      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5);
+      const distance = 60 + Math.random() * 80;
+      dx = Math.cos(angle) * distance;
+      dy = Math.sin(angle) * distance - 30;
+    }
+
+    particle.style.left = `${x}px`;
+    particle.style.top = `${y}px`;
+    particle.style.setProperty('--dx', `${dx}px`);
+    particle.style.setProperty('--dy', `${dy}px`);
+
+    document.body.appendChild(particle);
+    setTimeout(() => particle.remove(), 950);
+  }
 }
 
 async function handleReaction(postId, type, btn, event) {
   const rect = btn.getBoundingClientRect();
+  const emoji = btn.querySelector('.emoji').textContent;
   const countEl = btn.querySelector('.count');
   const key = `${postId}_${type}`;
   const isAlreadyActive = btn.classList.contains('active');
 
-  // Réponse visuelle au clic
-  spawnReactionBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, type);
+  // Explosion au clic
+  spawnEmojiParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, emoji);
 
   // Mise à jour optimiste
   let currentCount = parseInt(countEl.textContent, 10) || 0;
@@ -1019,7 +1254,8 @@ animRadios.forEach(radio => {
 // Bouton tester la réponse des réactions
 if (btnTestAnim) {
   btnTestAnim.addEventListener('click', () => {
-    spawnReactionBurst(window.innerWidth / 2, window.innerHeight / 2, 'wanda');
+    const randomEmoji = REACTION_DEFS[Math.floor(Math.random() * REACTION_DEFS.length)].emoji;
+    spawnEmojiParticles(window.innerWidth / 2, window.innerHeight / 2, randomEmoji);
   });
 }
 
@@ -1062,6 +1298,33 @@ window.addEventListener('DOMContentLoaded', () => {
     navigator.serviceWorker.register('/sw.js')
       .then(() => console.log('WANDA PWA Service Worker actif'))
       .catch(err => console.warn('PWA non enregistrée', err));
+  }
+});
+
+function setSearchOpen(open) {
+  setElementHidden(wallSearchPanel, !open);
+  if (btnToggleSearch) {
+    btnToggleSearch.classList.toggle('active', open);
+    btnToggleSearch.setAttribute('aria-expanded', String(open));
+    btnToggleSearch.setAttribute('aria-label', open ? 'Fermer la recherche' : 'Rechercher');
+    btnToggleSearch.setAttribute('title', open ? 'Fermer la recherche' : 'Rechercher');
+  }
+  if (open) {
+    window.setTimeout(() => wallSearchInput?.focus(), 90);
+  }
+}
+
+if (btnToggleSearch && wallSearchPanel) {
+  btnToggleSearch.addEventListener('click', () => {
+    const alreadyOpen = !wallSearchPanel.classList.contains('is-hidden');
+    setSearchOpen(!alreadyOpen);
+  });
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && wallSearchPanel && !wallSearchPanel.classList.contains('is-hidden')) {
+    setSearchOpen(false);
+    btnToggleSearch?.focus();
   }
 });
 
